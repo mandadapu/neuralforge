@@ -69,7 +69,9 @@ func (c *ClaudeBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 		params.Temperature = param.NewOpt(req.Temperature)
 	}
 
-	resp, err := c.client.Messages.New(ctx, params)
+	resp, err := withRetry(ctx, DefaultRetryConfig, func() (*anthropic.Message, error) {
+		return c.client.Messages.New(ctx, params)
+	})
 	if err != nil {
 		return CompletionResponse{}, fmt.Errorf("claude completion failed: %w", err)
 	}
