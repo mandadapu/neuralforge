@@ -34,8 +34,14 @@ func New(cfg config.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open store: %w", err)
 	}
+	success := false
+	defer func() {
+		if !success {
+			s.Close()
+		}
+	}()
+
 	if err := s.Migrate(); err != nil {
-		s.Close()
 		return nil, fmt.Errorf("migrate store: %w", err)
 	}
 
@@ -59,6 +65,7 @@ func New(cfg config.Config) (*App, error) {
 		Handler: mux,
 	}
 
+	success = true
 	return a, nil
 }
 
