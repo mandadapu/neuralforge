@@ -222,7 +222,11 @@ func (k *KubernetesExecutor) Run(ctx context.Context, job ExecutorJob) (Executor
 		return ExecutorResult{TimedOut: timedOut}, fmt.Errorf("error waiting for job: %w", err)
 	}
 
-	stdout, stderr := k.readLogs(ctx, name)
+	stdout, logErr := k.readLogs(ctx, name)
+	var stderr string
+	if logErr != nil {
+		stderr = fmt.Sprintf("failed to read logs: %v", logErr)
+	}
 
 	return ExecutorResult{
 		Success:  success,
@@ -263,12 +267,15 @@ func (k *KubernetesExecutor) waitForCompletion(ctx context.Context, name string,
 }
 
 // readLogs finds the pod for the given job and reads the main container logs.
-func (k *KubernetesExecutor) readLogs(ctx context.Context, jobName string) (stdout string, stderr string) {
+func (k *KubernetesExecutor) readLogs(ctx context.Context, jobName string) (string, error) {
 	pods, err := k.client.CoreV1().Pods(k.namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
 	})
-	if err != nil || len(pods.Items) == 0 {
-		return "", fmt.Sprintf("failed to list pods for job %s: %v", jobName, err)
+	if err != nil {
+		return "", fmt.Errorf("failed to list pods for job %s: %w", jobName, err)
+	}
+	if len(pods.Items) == 0 {
+		return "", fmt.Errorf("no pods found for job %s", jobName)
 	}
 
 	podName := pods.Items[0].Name
@@ -277,18 +284,21 @@ func (k *KubernetesExecutor) readLogs(ctx context.Context, jobName string) (stdo
 		Container: container,
 	})
 
-	stream, err := req.Stream(ctx)
+	logCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	stream, err := req.Stream(logCtx)
 	if err != nil {
-		return "", fmt.Sprintf("failed to stream logs: %v", err)
+		return "", fmt.Errorf("failed to stream logs: %w", err)
 	}
 	defer stream.Close()
 
 	data, err := io.ReadAll(stream)
 	if err != nil {
-		return "", fmt.Sprintf("failed to read logs: %v", err)
+		return "", fmt.Errorf("failed to read logs: %w", err)
 	}
 
-	return string(data), ""
+	return string(data), nil
 }
 
 // Cleanup deletes the Kubernetes Job and its pods using background propagation.
