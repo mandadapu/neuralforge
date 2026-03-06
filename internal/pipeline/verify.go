@@ -12,6 +12,7 @@ type VerifyStage struct {
 }
 
 func NewVerifyStage(command string) *VerifyStage {
+	command = strings.TrimSpace(command)
 	if command == "" {
 		command = "make test"
 	}
@@ -29,6 +30,12 @@ func (s *VerifyStage) Run(_ context.Context, state *PipelineState) (StageResult,
 	}
 
 	parts := strings.Fields(s.command)
+	if len(parts) == 0 {
+		return StageResult{
+			Status: StatusSkipped,
+			Output: "no verify command configured",
+		}, nil
+	}
 	cmd := exec.Command(parts[0], parts[1:]...)
 	cmd.Dir = state.Repo.LocalPath
 
