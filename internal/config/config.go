@@ -1,8 +1,11 @@
 package config
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -121,6 +124,86 @@ func LoadFromEnv() Config {
 			CommitToRepo:  envBool("NEURALFORGE_CONTEXT_COMMIT", true),
 		},
 	}
+}
+
+func (c Config) Validate() error {
+	var errs []string
+
+	// Server
+	if c.Server.Port < 1 || c.Server.Port > 65535 {
+		errs = append(errs, fmt.Sprintf("invalid server port: %d (must be 1-65535)", c.Server.Port))
+	}
+
+	// Workers
+	if c.Workers < 1 {
+		errs = append(errs, fmt.Sprintf("invalid workers: %d (must be >= 1)", c.Workers))
+	}
+
+	// GitHub — required for core functionality
+	if c.GitHub.AppID == 0 {
+		errs = append(errs, "GITHUB_APP_ID is required")
+	}
+	if c.GitHub.PrivateKeyPath == "" {
+		errs = append(errs, "GITHUB_PRIVATE_KEY_PATH is required")
+	}
+	if c.GitHub.WebhookSecret == "" {
+		errs = append(errs, "GITHUB_WEBHOOK_SECRET is required")
+	}
+
+	// LLM — validate the selected provider has an API key
+	switch c.LLM.DefaultProvider {
+	case "claude":
+		if c.LLM.Claude.APIKey == "" {
+			errs = append(errs, "ANTHROPIC_API_KEY is required when provider is claude")
+		}
+	case "openai":
+		if c.LLM.OpenAI.APIKey == "" {
+			errs = append(errs, "OPENAI_API_KEY is required when provider is openai")
+		}
+	default:
+		errs = append(errs, fmt.Sprintf("unknown LLM provider: %q (must be claude or openai)", c.LLM.DefaultProvider))
+	}
+
+	// Executor
+	switch c.Executor.DefaultType {
+	case "docker":
+		if c.Executor.Docker.Timeout <= 0 {
+			errs = append(errs, "docker timeout must be > 0")
+		}
+		if c.Executor.Docker.Image == "" {
+			errs = append(errs, "docker image is required")
+		}
+	case "kubernetes":
+		if c.Executor.Kubernetes.Timeout <= 0 {
+			errs = append(errs, "kubernetes timeout must be > 0")
+		}
+		if c.Executor.Kubernetes.Image == "" {
+			errs = append(errs, "kubernetes image is required")
+		}
+		if c.Executor.Kubernetes.Namespace == "" {
+			errs = append(errs, "kubernetes namespace is required")
+		}
+	default:
+		errs = append(errs, fmt.Sprintf("unknown executor type: %q (must be docker or kubernetes)", c.Executor.DefaultType))
+	}
+
+	// Store
+	if c.Store.Driver == "" {
+		errs = append(errs, "store driver is required")
+	}
+	if c.Store.DSN == "" {
+		errs = append(errs, "store DSN is required")
+	}
+
+	// Context
+	if c.Context.RefreshDays < 1 {
+		errs = append(errs, fmt.Sprintf("invalid context refresh days: %d (must be >= 1)", c.Context.RefreshDays))
+	}
+
+	if len(errs) > 0 {
+		return errors.New("config validation failed:\n  " + strings.Join(errs, "\n  "))
+	}
+	return nil
 }
 
 func envStr(key, fallback string) string {

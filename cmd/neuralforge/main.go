@@ -35,6 +35,9 @@ func serveCmd() *cobra.Command {
 		Short: "Start the webhook server and worker pool",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.LoadFromEnv()
+			if err := cfg.Validate(); err != nil {
+				return fmt.Errorf("configuration error: %w", err)
+			}
 
 			a, err := app.New(cfg)
 			if err != nil {
