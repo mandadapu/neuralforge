@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 )
@@ -37,7 +38,9 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	go h.callback(eventType, body)
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"ok":true}`))
+	if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+		slog.Error("failed to write webhook response", "error", err)
+	}
 }
 
 func (h *WebhookHandler) verifySignature(payload []byte, signature string) bool {
