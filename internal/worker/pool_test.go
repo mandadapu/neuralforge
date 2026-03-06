@@ -26,6 +26,17 @@ func (m *mockStore) ListPendingJobs(limit int) ([]store.Job, error) {
 	return []store.Job{j}, nil
 }
 
+func (m *mockStore) ClaimPendingJobs(limit int) ([]store.Job, error) {
+	if len(m.jobs) == 0 {
+		return nil, nil
+	}
+	j := m.jobs[0]
+	m.jobs = m.jobs[1:]
+	j.Status = store.JobRunning
+	atomic.AddInt32(&m.updated, 1)
+	return []store.Job{j}, nil
+}
+
 func (m *mockStore) UpdateJobStatus(id string, status store.JobStatus, stage string) error {
 	atomic.AddInt32(&m.updated, 1)
 	return nil

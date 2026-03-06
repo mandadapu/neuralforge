@@ -43,6 +43,7 @@ type Store interface {
 	UpdateJobCost(id string, cost float64) error
 	CompleteJob(id string, status JobStatus) error
 	ListPendingJobs(limit int) ([]Job, error)
+	ClaimPendingJobs(limit int) ([]Job, error)
 	UpsertRepoContext(ctx RepoContextRecord) error
 	GetRepoContext(repoFullName string) (*RepoContextRecord, error)
 	Migrate() error

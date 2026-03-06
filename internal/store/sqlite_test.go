@@ -60,6 +60,30 @@ func TestListPendingJobs(t *testing.T) {
 	assert.Equal(t, "j1", jobs[0].ID)
 }
 
+func TestClaimPendingJobs(t *testing.T) {
+	s := newTestStore(t)
+	require.NoError(t, s.CreateJob(Job{ID: "j1", RepoFullName: "o/r", IssueNumber: 1, Status: JobQueued}))
+	require.NoError(t, s.CreateJob(Job{ID: "j2", RepoFullName: "o/r", IssueNumber: 2, Status: JobQueued}))
+	require.NoError(t, s.CreateJob(Job{ID: "j3", RepoFullName: "o/r", IssueNumber: 3, Status: JobRunning}))
+
+	// First claim should get the two queued jobs
+	jobs, err := s.ClaimPendingJobs(10)
+	require.NoError(t, err)
+	assert.Len(t, jobs, 2)
+	assert.Equal(t, JobRunning, jobs[0].Status)
+	assert.Equal(t, JobRunning, jobs[1].Status)
+
+	// Second claim should get nothing (already claimed)
+	jobs2, err := s.ClaimPendingJobs(10)
+	require.NoError(t, err)
+	assert.Len(t, jobs2, 0)
+
+	// Verify the jobs are now running in the database
+	got, err := s.GetJob("j1")
+	require.NoError(t, err)
+	assert.Equal(t, JobRunning, got.Status)
+}
+
 func TestCompleteJob(t *testing.T) {
 	s := newTestStore(t)
 	require.NoError(t, s.CreateJob(Job{ID: "j4", RepoFullName: "o/r", IssueNumber: 4, Status: JobRunning}))
