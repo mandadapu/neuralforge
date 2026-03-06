@@ -32,6 +32,23 @@ func TestWebhookSignatureValidation(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 }
 
+func TestWebhookRejectsOversizedPayload(t *testing.T) {
+	handler := NewWebhookHandler("secret", func(eventType string, payload []byte) {
+		t.Fatal("callback should not be invoked for oversized payload")
+	})
+
+	// Create a payload that exceeds the 25MB limit
+	oversized := strings.Repeat("x", 25*1024*1024+1)
+	req := httptest.NewRequest("POST", "/webhooks/github", strings.NewReader(oversized))
+	req.Header.Set("X-Hub-Signature-256", "sha256=irrelevant")
+	req.Header.Set("X-GitHub-Event", "issues")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusRequestEntityTooLarge, rr.Code)
+}
+
 func TestWebhookRejectsInvalidSignature(t *testing.T) {
 	handler := NewWebhookHandler("secret", func(eventType string, payload []byte) {})
 
