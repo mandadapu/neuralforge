@@ -76,6 +76,33 @@ func TestEngineSkipsStage(t *testing.T) {
 	assert.Equal(t, StatusPassed, state.Stages[1].Status)
 }
 
+type costMutatingStage struct {
+	name    string
+	addCost float64
+}
+
+func (m *costMutatingStage) Name() string { return m.name }
+func (m *costMutatingStage) Run(_ context.Context, state *PipelineState) (StageResult, error) {
+	state.Cost += m.addCost
+	return StageResult{Status: StatusPassed, Output: "ok"}, nil
+}
+
+func TestEngineBudgetExceededMidStage(t *testing.T) {
+	stages := []Stage{
+		&costMutatingStage{name: "expensive", addCost: 3.0},
+		&mockStage{name: "next", result: StageResult{Status: StatusPassed}},
+	}
+	e := NewEngine(stages, &EngineConfig{BudgetUSD: 2.0})
+
+	state := &PipelineState{JobID: "test-budget-mid"}
+	err := e.Run(context.Background(), state)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "budget exceeded")
+	// The expensive stage ran and was logged, but "next" never ran
+	assert.Len(t, state.Stages, 1)
+	assert.Equal(t, "expensive", state.Stages[0].Name)
+}
+
 func TestEngineBudgetExceeded(t *testing.T) {
 	stages := []Stage{
 		&mockStage{name: "s1", result: StageResult{Status: StatusPassed}},
