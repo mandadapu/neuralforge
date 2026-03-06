@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log/slog"
 	"os/exec"
 	"strings"
 )
@@ -58,5 +59,10 @@ func (d *DockerExecutor) Run(ctx context.Context, job ExecutorJob) (ExecutorResu
 
 func (d *DockerExecutor) Cleanup(ctx context.Context, jobID string) error {
 	cmd := exec.CommandContext(ctx, "docker", "rm", "-f", fmt.Sprintf("nf-%s", jobID))
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		slog.Error("docker cleanup failed", "job_id", jobID, "error", err)
+		return fmt.Errorf("docker cleanup: %w", err)
+	}
+	slog.Info("docker cleanup completed", "job_id", jobID)
+	return nil
 }

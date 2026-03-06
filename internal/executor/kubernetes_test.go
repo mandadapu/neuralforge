@@ -1,11 +1,15 @@
 package executor
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	batchv1 "k8s.io/api/batch/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 func TestK8sJobSpec(t *testing.T) {
@@ -55,4 +59,36 @@ func TestK8sJobName(t *testing.T) {
 	k := &KubernetesExecutor{}
 	assert.Equal(t, "neuralforge-owner-repo-42", k.jobName("owner/repo#42"))
 	assert.Equal(t, "neuralforge-simple", k.jobName("simple"))
+}
+
+func TestK8sCleanup(t *testing.T) {
+	const namespace = "test-ns"
+
+	t.Run("cleanup existing job", func(t *testing.T) {
+		fakeClient := fake.NewSimpleClientset(&batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "neuralforge-job-1",
+				Namespace: namespace,
+			},
+		})
+
+		k := NewKubernetesWithClient(fakeClient, namespace, "img:v1", "secret", "git-secret", "1", "1Gi")
+
+		err := k.Cleanup(context.Background(), "job-1")
+		require.NoError(t, err)
+
+		// Verify the job was actually deleted
+		jobs, err := fakeClient.BatchV1().Jobs(namespace).List(context.Background(), metav1.ListOptions{})
+		require.NoError(t, err)
+		assert.Empty(t, jobs.Items)
+	})
+
+	t.Run("cleanup nonexistent job returns error", func(t *testing.T) {
+		fakeClient := fake.NewSimpleClientset()
+		k := NewKubernetesWithClient(fakeClient, namespace, "img:v1", "secret", "git-secret", "1", "1Gi")
+
+		err := k.Cleanup(context.Background(), "nonexistent")
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "kubernetes cleanup")
+	})
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"regexp"
 	"strings"
 	"time"
@@ -295,7 +296,12 @@ func (k *KubernetesExecutor) readLogs(ctx context.Context, jobName string) (stdo
 func (k *KubernetesExecutor) Cleanup(ctx context.Context, jobID string) error {
 	name := k.jobName(jobID)
 	propagation := metav1.DeletePropagationBackground
-	return k.client.BatchV1().Jobs(k.namespace).Delete(ctx, name, metav1.DeleteOptions{
+	if err := k.client.BatchV1().Jobs(k.namespace).Delete(ctx, name, metav1.DeleteOptions{
 		PropagationPolicy: &propagation,
-	})
+	}); err != nil {
+		slog.Error("kubernetes cleanup failed", "job_id", jobID, "job_name", name, "error", err)
+		return fmt.Errorf("kubernetes cleanup: %w", err)
+	}
+	slog.Info("kubernetes cleanup completed", "job_id", jobID, "job_name", name)
+	return nil
 }

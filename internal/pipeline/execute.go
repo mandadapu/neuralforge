@@ -3,6 +3,7 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/mandadapu/neuralforge/internal/executor"
@@ -30,6 +31,14 @@ func (s *ExecuteStage) Run(ctx context.Context, state *PipelineState) (StageResu
 		Context:  state.Memory,
 		Timeout:  s.timeout,
 	}
+
+	defer func() {
+		cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := s.exec.Cleanup(cleanupCtx, job.ID); err != nil {
+			slog.Error("executor cleanup failed", "job_id", job.ID, "executor", s.exec.Name(), "error", err)
+		}
+	}()
 
 	result, err := s.exec.Run(ctx, job)
 	if err != nil {
