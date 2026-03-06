@@ -61,7 +61,9 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 		params.Temperature = param.NewOpt(req.Temperature)
 	}
 
-	resp, err := o.client.Chat.Completions.New(ctx, params)
+	resp, err := withRetry(ctx, DefaultRetryConfig, func() (*openai.ChatCompletion, error) {
+		return o.client.Chat.Completions.New(ctx, params)
+	})
 	if err != nil {
 		return CompletionResponse{}, fmt.Errorf("openai completion failed: %w", err)
 	}
