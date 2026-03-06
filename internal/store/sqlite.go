@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -8,6 +9,9 @@ import (
 
 	_ "modernc.org/sqlite"
 )
+
+// DefaultDBTimeout is the maximum time allowed for a single database operation.
+const DefaultDBTimeout = 5 * time.Second
 
 type SQLiteStore struct {
 	db *sql.DB
@@ -22,11 +26,17 @@ func NewSQLiteStore(dsn string) (*SQLiteStore, error) {
 		db.Close()
 		return nil, fmt.Errorf("set WAL mode: %w", err)
 	}
+	if _, err := db.Exec("PRAGMA busy_timeout = 5000"); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("set busy timeout: %w", err)
+	}
 	return &SQLiteStore{db: db}, nil
 }
 
-func (s *SQLiteStore) Migrate() error {
-	_, err := s.db.Exec(`
+func (s *SQLiteStore) Migrate(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
+	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS jobs (
 			id             TEXT PRIMARY KEY,
 			repo_full_name TEXT NOT NULL,
@@ -56,9 +66,11 @@ func (s *SQLiteStore) Migrate() error {
 	return nil
 }
 
-func (s *SQLiteStore) CreateJob(job Job) error {
+func (s *SQLiteStore) CreateJob(ctx context.Context, job Job) error {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
 	now := time.Now().UTC()
-	_, err := s.db.Exec(
+	_, err := s.db.ExecContext(ctx,
 		`INSERT INTO jobs (id, repo_full_name, issue_number, issue_title, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at)
 		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.ID, job.RepoFullName, job.IssueNumber, job.IssueTitle,
@@ -88,8 +100,10 @@ func (s *SQLiteStore) scanJob(row interface{ Scan(...any) error }) (*Job, error)
 	return &j, nil
 }
 
-func (s *SQLiteStore) GetJob(id string) (*Job, error) {
-	row := s.db.QueryRow(
+func (s *SQLiteStore) GetJob(ctx context.Context, id string) (*Job, error) {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
+	row := s.db.QueryRowContext(ctx,
 		`SELECT id, repo_full_name, issue_number, issue_title, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at
 		 FROM jobs WHERE id = ?`, id,
 	)
@@ -100,8 +114,10 @@ func (s *SQLiteStore) GetJob(id string) (*Job, error) {
 	return j, nil
 }
 
-func (s *SQLiteStore) GetJobByIssue(repoFullName string, issueNumber int) (*Job, error) {
-	row := s.db.QueryRow(
+func (s *SQLiteStore) GetJobByIssue(ctx context.Context, repoFullName string, issueNumber int) (*Job, error) {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
+	row := s.db.QueryRowContext(ctx,
 		`SELECT id, repo_full_name, issue_number, issue_title, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at
 		 FROM jobs WHERE repo_full_name = ? AND issue_number = ?`, repoFullName, issueNumber,
 	)
@@ -112,8 +128,10 @@ func (s *SQLiteStore) GetJobByIssue(repoFullName string, issueNumber int) (*Job,
 	return j, nil
 }
 
-func (s *SQLiteStore) UpdateJobStatus(id string, status JobStatus, stage string) error {
-	_, err := s.db.Exec(
+func (s *SQLiteStore) UpdateJobStatus(ctx context.Context, id string, status JobStatus, stage string) error {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
+	_, err := s.db.ExecContext(ctx,
 		`UPDATE jobs SET status = ?, current_stage = ?, updated_at = ? WHERE id = ?`,
 		status, stage, time.Now().UTC(), id,
 	)
@@ -123,8 +141,10 @@ func (s *SQLiteStore) UpdateJobStatus(id string, status JobStatus, stage string)
 	return nil
 }
 
-func (s *SQLiteStore) UpdateJobError(id string, errMsg string) error {
-	_, err := s.db.Exec(
+func (s *SQLiteStore) UpdateJobError(ctx context.Context, id string, errMsg string) error {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
+	_, err := s.db.ExecContext(ctx,
 		`UPDATE jobs SET error = ?, status = ?, updated_at = ? WHERE id = ?`,
 		errMsg, JobFailed, time.Now().UTC(), id,
 	)
@@ -134,8 +154,10 @@ func (s *SQLiteStore) UpdateJobError(id string, errMsg string) error {
 	return nil
 }
 
-func (s *SQLiteStore) UpdateJobCost(id string, cost float64) error {
-	_, err := s.db.Exec(
+func (s *SQLiteStore) UpdateJobCost(ctx context.Context, id string, cost float64) error {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
+	_, err := s.db.ExecContext(ctx,
 		`UPDATE jobs SET cost_usd = ?, updated_at = ? WHERE id = ?`,
 		cost, time.Now().UTC(), id,
 	)
@@ -145,9 +167,11 @@ func (s *SQLiteStore) UpdateJobCost(id string, cost float64) error {
 	return nil
 }
 
-func (s *SQLiteStore) CompleteJob(id string, status JobStatus) error {
+func (s *SQLiteStore) CompleteJob(ctx context.Context, id string, status JobStatus) error {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
 	now := time.Now().UTC()
-	_, err := s.db.Exec(
+	_, err := s.db.ExecContext(ctx,
 		`UPDATE jobs SET status = ?, completed_at = ?, updated_at = ? WHERE id = ?`,
 		status, now, now, id,
 	)
@@ -157,8 +181,10 @@ func (s *SQLiteStore) CompleteJob(id string, status JobStatus) error {
 	return nil
 }
 
-func (s *SQLiteStore) ListPendingJobs(limit int) ([]Job, error) {
-	rows, err := s.db.Query(
+func (s *SQLiteStore) ListPendingJobs(ctx context.Context, limit int) ([]Job, error) {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
+	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, repo_full_name, issue_number, issue_title, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at
 		 FROM jobs WHERE status = ? ORDER BY created_at ASC LIMIT ?`,
 		JobQueued, limit,
@@ -179,12 +205,14 @@ func (s *SQLiteStore) ListPendingJobs(limit int) ([]Job, error) {
 	return jobs, rows.Err()
 }
 
-func (s *SQLiteStore) UpsertRepoContext(ctx RepoContextRecord) error {
-	langs, err := json.Marshal(ctx.Languages)
+func (s *SQLiteStore) UpsertRepoContext(ctx context.Context, rc RepoContextRecord) error {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
+	langs, err := json.Marshal(rc.Languages)
 	if err != nil {
 		return fmt.Errorf("marshal languages: %w", err)
 	}
-	_, err = s.db.Exec(
+	_, err = s.db.ExecContext(ctx,
 		`INSERT INTO repo_contexts (repo_full_name, claude_md_hash, last_analyzed_at, file_count, languages)
 		 VALUES (?, ?, ?, ?, ?)
 		 ON CONFLICT(repo_full_name) DO UPDATE SET
@@ -192,7 +220,7 @@ func (s *SQLiteStore) UpsertRepoContext(ctx RepoContextRecord) error {
 			last_analyzed_at = excluded.last_analyzed_at,
 			file_count = excluded.file_count,
 			languages = excluded.languages`,
-		ctx.RepoFullName, ctx.ClaudeMDHash, ctx.LastAnalyzedAt.UTC(), ctx.FileCount, string(langs),
+		rc.RepoFullName, rc.ClaudeMDHash, rc.LastAnalyzedAt.UTC(), rc.FileCount, string(langs),
 	)
 	if err != nil {
 		return fmt.Errorf("upsert repo context: %w", err)
@@ -200,10 +228,12 @@ func (s *SQLiteStore) UpsertRepoContext(ctx RepoContextRecord) error {
 	return nil
 }
 
-func (s *SQLiteStore) GetRepoContext(repoFullName string) (*RepoContextRecord, error) {
+func (s *SQLiteStore) GetRepoContext(ctx context.Context, repoFullName string) (*RepoContextRecord, error) {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
 	var rc RepoContextRecord
 	var langsJSON string
-	err := s.db.QueryRow(
+	err := s.db.QueryRowContext(ctx,
 		`SELECT repo_full_name, claude_md_hash, last_analyzed_at, file_count, languages
 		 FROM repo_contexts WHERE repo_full_name = ?`, repoFullName,
 	).Scan(&rc.RepoFullName, &rc.ClaudeMDHash, &rc.LastAnalyzedAt, &rc.FileCount, &langsJSON)

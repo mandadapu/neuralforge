@@ -34,7 +34,7 @@ func New(cfg config.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("open store: %w", err)
 	}
-	if err := s.Migrate(); err != nil {
+	if err := s.Migrate(context.Background()); err != nil {
 		s.Close()
 		return nil, fmt.Errorf("migrate store: %w", err)
 	}
@@ -125,7 +125,9 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 			IssueTitle:   e.Issue.Title,
 			Status:       store.JobQueued,
 		}
-		if err := a.store.CreateJob(job); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := a.store.CreateJob(ctx, job); err != nil {
 			slog.Error("create job", "error", err, "job_id", jobID)
 			return
 		}

@@ -17,7 +17,7 @@ type mockStore struct {
 	updated int32
 }
 
-func (m *mockStore) ListPendingJobs(limit int) ([]store.Job, error) {
+func (m *mockStore) ListPendingJobs(ctx context.Context, limit int) ([]store.Job, error) {
 	if len(m.jobs) == 0 {
 		return nil, nil
 	}
@@ -26,16 +26,16 @@ func (m *mockStore) ListPendingJobs(limit int) ([]store.Job, error) {
 	return []store.Job{j}, nil
 }
 
-func (m *mockStore) UpdateJobStatus(id string, status store.JobStatus, stage string) error {
+func (m *mockStore) UpdateJobStatus(ctx context.Context, id string, status store.JobStatus, stage string) error {
 	atomic.AddInt32(&m.updated, 1)
 	return nil
 }
 
-func (m *mockStore) CompleteJob(id string, status store.JobStatus) error {
+func (m *mockStore) CompleteJob(ctx context.Context, id string, status store.JobStatus) error {
 	return nil
 }
 
-func (m *mockStore) UpdateJobError(id string, errMsg string) error {
+func (m *mockStore) UpdateJobError(ctx context.Context, id string, errMsg string) error {
 	return nil
 }
 
