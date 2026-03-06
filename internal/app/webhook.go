@@ -5,11 +5,12 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"io"
+	"log/slog"
 	"net/http"
 	"strings"
 )
 
-type EventCallback func(eventType string, payload []byte)
+type EventCallback func(eventType string, payload []byte) error
 
 type WebhookHandler struct {
 	secret   string
@@ -34,7 +35,11 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	eventType := r.Header.Get("X-GitHub-Event")
-	go h.callback(eventType, body)
+	if err := h.callback(eventType, body); err != nil {
+		slog.Error("webhook callback failed", "event", eventType, "error", err)
+		http.Error(w, `{"error":"internal"}`, http.StatusInternalServerError)
+		return
+	}
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"ok":true}`))

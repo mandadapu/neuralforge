@@ -102,20 +102,19 @@ func (a *App) Shutdown(ctx context.Context) error {
 }
 
 // handleEvent parses a webhook event and creates a job for issue labeled events.
-func (a *App) handleEvent(eventType string, payload []byte) {
+func (a *App) handleEvent(eventType string, payload []byte) error {
 	event, err := github.ParseWebhookEvent(eventType, payload)
 	if err != nil {
-		slog.Error("parse webhook event", "error", err)
-		return
+		return fmt.Errorf("parse webhook event: %w", err)
 	}
 	if event == nil {
-		return
+		return nil
 	}
 
 	switch e := event.(type) {
 	case *github.IssueLabeledEvent:
 		if e.Label != "neuralforge" {
-			return
+			return nil
 		}
 		jobID := fmt.Sprintf("%s#%d", e.Repo.FullName, e.Issue.Number)
 		job := store.Job{
@@ -126,12 +125,13 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 			Status:       store.JobQueued,
 		}
 		if err := a.store.CreateJob(job); err != nil {
-			slog.Error("create job", "error", err, "job_id", jobID)
-			return
+			return fmt.Errorf("create job %s: %w", jobID, err)
 		}
 		slog.Info("job created", "job_id", jobID, "issue", e.Issue.Title)
+		return nil
 	default:
 		slog.Info("unhandled event type", "type", event.EventType())
+		return nil
 	}
 }
 
