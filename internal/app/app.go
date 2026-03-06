@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/mandadapu/ghappauth"
 	"github.com/mandadapu/neuralforge/internal/config"
 	"github.com/mandadapu/neuralforge/internal/executor"
 	"github.com/mandadapu/neuralforge/internal/git"
@@ -26,6 +28,7 @@ type App struct {
 	store  store.Store
 	pool   *worker.Pool
 	server *http.Server
+	ghApp  *ghappauth.App
 }
 
 // New creates a new App, opens the SQLite store, and runs migrations.
@@ -44,11 +47,37 @@ func New(cfg config.Config) (*App, error) {
 		store: s,
 	}
 
+	// Initialize GitHub App authentication if a private key is configured.
+	if cfg.GitHub.PrivateKeyPath != "" {
+		ghApp, err := ghappauth.New(ghappauth.Config{
+			AppID:          cfg.GitHub.AppID,
+			PrivateKeyPath: cfg.GitHub.PrivateKeyPath,
+			WebhookSecret:  cfg.GitHub.WebhookSecret,
+		})
+		if err != nil {
+			s.Close()
+			return nil, fmt.Errorf("init github app auth: %w", err)
+		}
+		a.ghApp = ghApp
+	}
+
 	handler := a.buildJobHandler()
 	a.pool = worker.NewPool(cfg.Workers, s, handler)
 
 	mux := http.NewServeMux()
-	mux.Handle("/webhooks/github", NewWebhookHandler(cfg.GitHub.WebhookSecret, a.handleEvent))
+	if a.ghApp != nil {
+		mux.Handle("/webhooks/github", a.ghApp.WebhookMiddleware(
+			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				body, _ := io.ReadAll(r.Body)
+				eventType := r.Header.Get("X-GitHub-Event")
+				go a.handleEvent(eventType, body)
+				w.WriteHeader(http.StatusOK)
+				w.Write([]byte(`{"ok":true}`))
+			}),
+		))
+	} else {
+		mux.Handle("/webhooks/github", NewWebhookHandler(cfg.GitHub.WebhookSecret, a.handleEvent))
+	}
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
@@ -192,8 +221,34 @@ func (a *App) buildJobHandler() worker.JobHandler {
 
 		cloneDir := filepath.Join(tmpDir, "repo")
 		cloneURL := fmt.Sprintf("https://github.com/%s.git", job.RepoFullName)
-		// TODO: pass GitHub App installation token once App auth is implemented.
-		if _, err := git.Clone(cloneURL, cloneDir, ""); err != nil {
+
+		// Obtain an installation token for authenticated git clone if GitHub App is configured.
+		// TODO: resolve installationID from webhook event payload.
+		// For now, the pipeline runs without GitHub API access unless GITHUB_INSTALLATION_ID is set.
+		var cloneToken string
+		var ghClient *github.Client
+		if a.ghApp != nil {
+			installIDStr := os.Getenv("GITHUB_INSTALLATION_ID")
+			if installIDStr != "" {
+				var installID int64
+				if _, err := fmt.Sscanf(installIDStr, "%d", &installID); err == nil {
+					token, _, tokenErr := a.ghApp.InstallationToken(ctx, installID)
+					if tokenErr != nil {
+						slog.Warn("failed to get installation token, cloning without auth", "error", tokenErr)
+					} else {
+						cloneToken = token
+						httpClient, clientErr := a.ghApp.InstallationClient(ctx, installID)
+						if clientErr != nil {
+							slog.Warn("failed to create installation client", "error", clientErr)
+						} else {
+							ghClient = github.NewClient(httpClient)
+						}
+					}
+				}
+			}
+		}
+
+		if _, err := git.Clone(cloneURL, cloneDir, cloneToken); err != nil {
 			return fmt.Errorf("clone repo: %w", err)
 		}
 
@@ -213,7 +268,6 @@ func (a *App) buildJobHandler() worker.JobHandler {
 		}
 
 		// 3. Create pipeline stages.
-		// Wire the first 5 stages; PR/Review/Merge/Deploy require GitHub App auth.
 		var execTimeout time.Duration
 		if a.cfg.Executor.DefaultType == "kubernetes" {
 			execTimeout = a.cfg.Executor.Kubernetes.Timeout
@@ -228,11 +282,16 @@ func (a *App) buildJobHandler() worker.JobHandler {
 			pipeline.NewVerifyStage("make test"),
 			pipeline.NewComplianceStage(2000, 50),
 		}
-		// TODO: wire remaining stages once GitHub App authentication is implemented:
-		//   pipeline.NewPRStage(ghClient)
-		//   pipeline.NewReviewStage(backend, ghClient)
-		//   pipeline.NewMergeStage(ghClient)
-		//   pipeline.NewDeployStage(ghClient)
+
+		// Wire PR/Review/Merge/Deploy stages when GitHub App client is available.
+		if ghClient != nil {
+			stages = append(stages,
+				pipeline.NewPRStage(ghClient),
+				pipeline.NewReviewStage(backend, ghClient),
+				pipeline.NewMergeStage(ghClient, true),
+				pipeline.NewDeployStage(true),
+			)
+		}
 
 		// 4. Create engine with budget from config.
 		engine := pipeline.NewEngine(stages, &pipeline.EngineConfig{
