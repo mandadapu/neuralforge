@@ -1,0 +1,5 @@
+bin/
+*.db
+*.pem
+.env
+vendor/
