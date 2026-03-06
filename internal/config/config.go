@@ -41,6 +41,17 @@ type ProviderConfig struct {
 type ExecutorConfig struct {
 	DefaultType string
 	Docker      DockerConfig
+	Kubernetes  KubernetesConfig
+}
+
+type KubernetesConfig struct {
+	Namespace     string
+	Image         string
+	SecretName    string
+	GitSecretName string
+	Timeout       time.Duration
+	CPU           string
+	Memory        string
 }
 
 type DockerConfig struct {
@@ -88,6 +99,15 @@ func LoadFromEnv() Config {
 			Docker: DockerConfig{
 				Image:   envStr("NEURALFORGE_DOCKER_IMAGE", "ghcr.io/neuralforge/executor:latest"),
 				Timeout: time.Duration(envInt("NEURALFORGE_TIMEOUT_MINUTES", 30)) * time.Minute,
+			},
+			Kubernetes: KubernetesConfig{
+				Namespace:     envStr("NEURALFORGE_K8S_NAMESPACE", "neuralforge"),
+				Image:         envStr("NEURALFORGE_K8S_IMAGE", "ghcr.io/neuralforge/claude-executor:latest"),
+				SecretName:    envStr("NEURALFORGE_K8S_SECRET", "neuralforge-llm-keys"),
+				GitSecretName: envStr("NEURALFORGE_K8S_GIT_SECRET", "neuralforge-git-token"),
+				Timeout:       time.Duration(envInt("NEURALFORGE_K8S_TIMEOUT_MINUTES", 30)) * time.Minute,
+				CPU:           envStr("NEURALFORGE_K8S_CPU", "2"),
+				Memory:        envStr("NEURALFORGE_K8S_MEMORY", "4Gi"),
 			},
 		},
 		Store: StoreConfig{
