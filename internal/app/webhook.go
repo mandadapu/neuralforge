@@ -4,10 +4,13 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"net/http"
 	"strings"
 )
+
+const maxWebhookPayloadBytes = 25 * 1024 * 1024 // 25 MB — GitHub's documented limit
 
 type EventCallback func(eventType string, payload []byte)
 
@@ -21,9 +24,15 @@ func NewWebhookHandler(secret string, callback EventCallback) *WebhookHandler {
 }
 
 func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxWebhookPayloadBytes)
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		http.Error(w, "read error", http.StatusBadRequest)
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
+		} else {
+			http.Error(w, "read error", http.StatusBadRequest)
+		}
 		return
 	}
 
