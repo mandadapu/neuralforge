@@ -67,6 +67,10 @@ func (e *Engine) Run(ctx context.Context, state *PipelineState) error {
 			e.callback(state, stage.Name(), result.Status)
 		}
 
+		if e.config.BudgetUSD > 0 && state.Cost > e.config.BudgetUSD {
+			return fmt.Errorf("budget exceeded: $%.2f > $%.2f limit", state.Cost, e.config.BudgetUSD)
+		}
+
 		if result.Status == StatusFailed {
 			return fmt.Errorf("stage %s failed: %s", stage.Name(), result.Output)
 		}
