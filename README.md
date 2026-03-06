@@ -21,7 +21,7 @@ Issue (labeled "neuralforge")
 ## Features
 
 - **LLM-agnostic** — Claude and OpenAI backends, extensible to others
-- **Executor-agnostic** — Docker containers (VM, K8s planned)
+- **Executor-agnostic** — Docker, Kubernetes (Claude Code CLI in K8s pods), extensible
 - **5 parallel workers** — configurable via `NEURALFORGE_WORKERS`
 - **Cost tracking** — per-job budget limits (default $5)
 - **Per-repo config** — `.neuralforge.yml` for pipeline settings
@@ -62,8 +62,14 @@ neuralforge version            # Print version
 | `ANTHROPIC_API_KEY` | — | Claude API key |
 | `OPENAI_API_KEY` | — | OpenAI API key |
 | `NEURALFORGE_LLM_PROVIDER` | `claude` | Default LLM (`claude` or `openai`) |
-| `NEURALFORGE_EXECUTOR` | `docker` | Executor type |
+| `NEURALFORGE_EXECUTOR` | `docker` | Executor type (`docker` or `kubernetes`) |
 | `NEURALFORGE_STORE_DSN` | `neuralforge.db` | SQLite database path |
+| `NEURALFORGE_K8S_NAMESPACE` | `neuralforge` | K8s namespace for executor pods |
+| `NEURALFORGE_K8S_IMAGE` | `ghcr.io/neuralforge/claude-executor:latest` | Claude Code executor image |
+| `NEURALFORGE_K8S_SECRET` | `neuralforge-llm-keys` | K8s Secret with LLM API keys |
+| `NEURALFORGE_K8S_GIT_SECRET` | `neuralforge-git-token` | K8s Secret with git token |
+| `NEURALFORGE_K8S_CPU` | `2` | CPU request/limit per pod |
+| `NEURALFORGE_K8S_MEMORY` | `4Gi` | Memory request/limit per pod |
 
 ### Per-Repo (`.neuralforge.yml`)
 
@@ -97,7 +103,7 @@ internal/
   app/                 Webhook server + app lifecycle
   config/              Global + per-repo configuration
   context/             CLAUDE.md analysis + management
-  executor/            Docker executor (pluggable)
+  executor/            Docker + Kubernetes executors (pluggable)
   git/                 Git operations wrapper
   github/              Webhook parser + GitHub API client
   llm/                 Claude + OpenAI backends
@@ -114,6 +120,31 @@ internal/
 | `issue_comment` `/retry` | Re-enqueue failed job |
 | `issue_comment` `/cancel` | Cancel in-progress job |
 | `issue_comment` `/status` | Post pipeline status |
+
+## Kubernetes Executor
+
+Run Claude Code CLI autonomously inside K8s pods. Each job gets its own pod with an init container (git clone) and main container (Claude Code).
+
+```bash
+# Set executor to kubernetes
+export NEURALFORGE_EXECUTOR=kubernetes
+
+# Create secrets
+kubectl create namespace neuralforge
+kubectl apply -f deploy/k8s-secrets.yaml  # see deploy/k8s-secrets.yaml.example
+
+# Build the Claude executor image
+docker build -f deploy/claude-executor.Dockerfile -t ghcr.io/neuralforge/claude-executor:latest .
+```
+
+Pod lifecycle:
+1. Init container clones the repo (token from `neuralforge-git-token` Secret)
+2. Main container runs `claude -p "prompt" --dangerously-skip-permissions`
+3. Claude Code reads, edits, tests code autonomously
+4. On success, commits and pushes to `neuralforge/issue-{N}` branch
+5. NeuralForge picks up the branch and continues the pipeline
+
+Supports both `ANTHROPIC_API_KEY` and OAuth credentials via the K8s Secret.
 
 ## Development
 
