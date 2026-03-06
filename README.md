@@ -133,9 +133,16 @@ export NEURALFORGE_EXECUTOR=kubernetes
 kubectl create namespace neuralforge
 kubectl apply -f deploy/k8s-secrets.yaml  # see deploy/k8s-secrets.yaml.example
 
+# Apply RBAC (ServiceAccount + Role + RoleBinding)
+kubectl apply -f deploy/rbac.yaml
+
 # Build the Claude executor image
 docker build -f deploy/claude-executor.Dockerfile -t ghcr.io/neuralforge/claude-executor:latest .
 ```
+
+The RBAC manifest grants the `neuralforge` ServiceAccount permission to create/manage Jobs, read Pod logs, and access Secrets in the configured namespace. See `deploy/rbac.yaml` for details. Each executor pod runs with `serviceAccountName: neuralforge`.
+
+When the executor is set to `kubernetes`, the `/health` endpoint verifies K8s cluster connectivity and reports `{"status":"ok","k8s":"connected"}` or `{"status":"degraded","k8s":"<error>"}`.
 
 Pod lifecycle:
 1. Init container clones the repo (token from `neuralforge-git-token` Secret)

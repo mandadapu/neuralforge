@@ -28,3 +28,9 @@ type Executor interface {
 	Cleanup(ctx context.Context, jobID string) error
 	Name() string
 }
+
+// HealthChecker is optionally implemented by executors that can verify
+// connectivity to their backing infrastructure.
+type HealthChecker interface {
+	Ping(ctx context.Context) error
+}

@@ -76,6 +76,16 @@ func NewKubernetesWithClient(client kubernetes.Interface, namespace, image, secr
 
 func (k *KubernetesExecutor) Name() string { return "kubernetes" }
 
+// Ping verifies connectivity to the Kubernetes cluster by fetching the
+// API server version.
+func (k *KubernetesExecutor) Ping(ctx context.Context) error {
+	_, err := k.client.Discovery().ServerVersion()
+	if err != nil {
+		return fmt.Errorf("k8s cluster unreachable: %w", err)
+	}
+	return nil
+}
+
 // jobName converts a job ID into a DNS-safe Kubernetes job name.
 // Lowercase, non-alphanumeric chars replaced with "-", max 63 chars.
 func (k *KubernetesExecutor) jobName(id string) string {
@@ -122,7 +132,8 @@ fi
 			ActiveDeadlineSeconds: &deadlineSeconds,
 			Template: corev1.PodTemplateSpec{
 				Spec: corev1.PodSpec{
-					RestartPolicy: corev1.RestartPolicyNever,
+					ServiceAccountName: "neuralforge",
+					RestartPolicy:      corev1.RestartPolicyNever,
 					InitContainers: []corev1.Container{
 						{
 							Name:  "git-clone",

@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -22,10 +23,11 @@ import (
 
 // App wires together the store, worker pool, and HTTP server.
 type App struct {
-	cfg    config.Config
-	store  store.Store
-	pool   *worker.Pool
-	server *http.Server
+	cfg      config.Config
+	store    store.Store
+	pool     *worker.Pool
+	server   *http.Server
+	executor executor.Executor
 }
 
 // New creates a new App, opens the SQLite store, and runs migrations.
@@ -44,14 +46,26 @@ func New(cfg config.Config) (*App, error) {
 		store: s,
 	}
 
+	a.initExecutor()
 	handler := a.buildJobHandler()
 	a.pool = worker.NewPool(cfg.Workers, s, handler)
 
 	mux := http.NewServeMux()
 	mux.Handle("/webhooks/github", NewWebhookHandler(cfg.GitHub.WebhookSecret, a.handleEvent))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		status := map[string]string{"status": "ok"}
+		if hc, ok := a.executor.(executor.HealthChecker); ok {
+			if err := hc.Ping(r.Context()); err != nil {
+				status["status"] = "degraded"
+				status["k8s"] = err.Error()
+				w.WriteHeader(http.StatusServiceUnavailable)
+				json.NewEncoder(w).Encode(status)
+				return
+			}
+			status["k8s"] = "connected"
+		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		json.NewEncoder(w).Encode(status)
 	})
 
 	a.server = &http.Server{
@@ -135,7 +149,28 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 	}
 }
 
-// buildJobHandler creates the LLM backend and executor, then returns a handler
+// initExecutor creates the executor based on config and stores it in a.executor.
+func (a *App) initExecutor() {
+	switch a.cfg.Executor.DefaultType {
+	case "kubernetes":
+		k8sCfg := a.cfg.Executor.Kubernetes
+		k8sExec, err := executor.NewKubernetes(
+			k8sCfg.Namespace, k8sCfg.Image,
+			k8sCfg.SecretName, k8sCfg.GitSecretName,
+			k8sCfg.CPU, k8sCfg.Memory,
+		)
+		if err != nil {
+			slog.Error("failed to create k8s executor, falling back to docker", "error", err)
+			a.executor = executor.NewDocker(a.cfg.Executor.Docker.Image)
+		} else {
+			a.executor = k8sExec
+		}
+	default:
+		a.executor = executor.NewDocker(a.cfg.Executor.Docker.Image)
+	}
+}
+
+// buildJobHandler creates the LLM backend and returns a handler
 // that clones the repo, builds pipeline state, and runs the pipeline engine.
 func (a *App) buildJobHandler() worker.JobHandler {
 	// Create LLM backend based on config.
@@ -147,24 +182,7 @@ func (a *App) buildJobHandler() worker.JobHandler {
 		backend = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
 	}
 
-	// Create executor based on config.
-	var exec executor.Executor
-	switch a.cfg.Executor.DefaultType {
-	case "kubernetes":
-		k8sCfg := a.cfg.Executor.Kubernetes
-		var err error
-		exec, err = executor.NewKubernetes(
-			k8sCfg.Namespace, k8sCfg.Image,
-			k8sCfg.SecretName, k8sCfg.GitSecretName,
-			k8sCfg.CPU, k8sCfg.Memory,
-		)
-		if err != nil {
-			slog.Error("failed to create k8s executor, falling back to docker", "error", err)
-			exec = executor.NewDocker(a.cfg.Executor.Docker.Image)
-		}
-	default:
-		exec = executor.NewDocker(a.cfg.Executor.Docker.Image)
-	}
+	exec := a.executor
 
 	return func(ctx context.Context, job store.Job) error {
 		slog.Info("processing job", "job_id", job.ID, "repo", job.RepoFullName, "issue", job.IssueNumber)
