@@ -147,8 +147,24 @@ func (a *App) buildJobHandler() worker.JobHandler {
 		backend = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
 	}
 
-	// Create Docker executor from config.
-	exec := executor.NewDocker(a.cfg.Executor.Docker.Image)
+	// Create executor based on config.
+	var exec executor.Executor
+	switch a.cfg.Executor.DefaultType {
+	case "kubernetes":
+		k8sCfg := a.cfg.Executor.Kubernetes
+		var err error
+		exec, err = executor.NewKubernetes(
+			k8sCfg.Namespace, k8sCfg.Image,
+			k8sCfg.SecretName, k8sCfg.GitSecretName,
+			k8sCfg.CPU, k8sCfg.Memory,
+		)
+		if err != nil {
+			slog.Error("failed to create k8s executor, falling back to docker", "error", err)
+			exec = executor.NewDocker(a.cfg.Executor.Docker.Image)
+		}
+	default:
+		exec = executor.NewDocker(a.cfg.Executor.Docker.Image)
+	}
 
 	return func(ctx context.Context, job store.Job) error {
 		slog.Info("processing job", "job_id", job.ID, "repo", job.RepoFullName, "issue", job.IssueNumber)
@@ -184,10 +200,17 @@ func (a *App) buildJobHandler() worker.JobHandler {
 
 		// 3. Create pipeline stages.
 		// Wire the first 5 stages; PR/Review/Merge/Deploy require GitHub App auth.
+		var execTimeout time.Duration
+		if a.cfg.Executor.DefaultType == "kubernetes" {
+			execTimeout = a.cfg.Executor.Kubernetes.Timeout
+		} else {
+			execTimeout = a.cfg.Executor.Docker.Timeout
+		}
+
 		stages := []pipeline.Stage{
 			pipeline.NewArchitectStage(backend),
 			pipeline.NewSecurityStage(backend),
-			pipeline.NewExecuteStage(exec, a.cfg.Executor.Docker.Timeout),
+			pipeline.NewExecuteStage(exec, execTimeout),
 			pipeline.NewVerifyStage("make test"),
 			pipeline.NewComplianceStage(2000, 50),
 		}
