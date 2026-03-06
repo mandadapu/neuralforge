@@ -222,7 +222,15 @@ func (k *KubernetesExecutor) Run(ctx context.Context, job ExecutorJob) (Executor
 		return ExecutorResult{TimedOut: timedOut}, fmt.Errorf("error waiting for job: %w", err)
 	}
 
-	stdout, stderr := k.readLogs(ctx, name)
+	pod, podErr := k.waitForPodTermination(ctx, name, 60*time.Second)
+	if podErr != nil {
+		return ExecutorResult{
+			Success:  success,
+			TimedOut: timedOut,
+			Stderr:   fmt.Sprintf("failed to wait for pod: %v", podErr),
+		}, nil
+	}
+	stdout, stderr := k.readLogs(ctx, pod.Name)
 
 	return ExecutorResult{
 		Success:  success,
@@ -262,33 +270,72 @@ func (k *KubernetesExecutor) waitForCompletion(ctx context.Context, name string,
 	}
 }
 
-// readLogs finds the pod for the given job and reads the main container logs.
-func (k *KubernetesExecutor) readLogs(ctx context.Context, jobName string) (stdout string, stderr string) {
-	pods, err := k.client.CoreV1().Pods(k.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("job-name=%s", jobName),
-	})
-	if err != nil || len(pods.Items) == 0 {
-		return "", fmt.Sprintf("failed to list pods for job %s: %v", jobName, err)
-	}
+// waitForPodTermination polls the pod associated with the job until its phase
+// is Succeeded or Failed, ensuring the container has fully exited and logs are
+// available. This prevents the race where logs are read while the container is
+// still shutting down.
+func (k *KubernetesExecutor) waitForPodTermination(ctx context.Context, jobName string, timeout time.Duration) (*corev1.Pod, error) {
+	deadline := time.After(timeout)
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
 
-	podName := pods.Items[0].Name
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-deadline:
+			return nil, fmt.Errorf("timed out waiting for pod termination for job %s", jobName)
+		case <-ticker.C:
+			pods, err := k.client.CoreV1().Pods(k.namespace).List(ctx, metav1.ListOptions{
+				LabelSelector: fmt.Sprintf("job-name=%s", jobName),
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to list pods for job %s: %w", jobName, err)
+			}
+			if len(pods.Items) == 0 {
+				continue // pod not yet visible
+			}
+			pod := &pods.Items[0]
+			if pod.Status.Phase == corev1.PodSucceeded || pod.Status.Phase == corev1.PodFailed {
+				return pod, nil
+			}
+		}
+	}
+}
+
+// readLogs reads the main container logs for the given pod name, retrying up to
+// 3 times with exponential backoff for transient stream errors.
+func (k *KubernetesExecutor) readLogs(ctx context.Context, podName string) (stdout string, stderr string) {
 	container := "claude-executor"
-	req := k.client.CoreV1().Pods(k.namespace).GetLogs(podName, &corev1.PodLogOptions{
-		Container: container,
-	})
+	var lastErr error
 
-	stream, err := req.Stream(ctx)
-	if err != nil {
-		return "", fmt.Sprintf("failed to stream logs: %v", err)
+	for attempt := 0; attempt < 3; attempt++ {
+		if attempt > 0 {
+			select {
+			case <-ctx.Done():
+				return "", fmt.Sprintf("context cancelled reading logs: %v", ctx.Err())
+			case <-time.After(time.Duration(attempt) * 2 * time.Second):
+			}
+		}
+
+		req := k.client.CoreV1().Pods(k.namespace).GetLogs(podName, &corev1.PodLogOptions{
+			Container: container,
+		})
+		stream, err := req.Stream(ctx)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		data, err := io.ReadAll(stream)
+		stream.Close()
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		return string(data), ""
 	}
-	defer stream.Close()
 
-	data, err := io.ReadAll(stream)
-	if err != nil {
-		return "", fmt.Sprintf("failed to read logs: %v", err)
-	}
-
-	return string(data), ""
+	return "", fmt.Sprintf("failed to read logs after 3 attempts: %v", lastErr)
 }
 
 // Cleanup deletes the Kubernetes Job and its pods using background propagation.
