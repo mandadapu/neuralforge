@@ -51,7 +51,9 @@ func New(cfg config.Config) (*App, error) {
 	mux.Handle("/webhooks/github", NewWebhookHandler(cfg.GitHub.WebhookSecret, a.handleEvent))
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"status":"ok"}`))
+		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+			slog.Error("failed to write health response", "error", err)
+		}
 	})
 
 	a.server = &http.Server{
@@ -174,7 +176,11 @@ func (a *App) buildJobHandler() worker.JobHandler {
 		if err != nil {
 			return fmt.Errorf("create temp dir: %w", err)
 		}
-		defer os.RemoveAll(tmpDir)
+		defer func() {
+			if err := os.RemoveAll(tmpDir); err != nil {
+				slog.Warn("failed to remove temp dir", "path", tmpDir, "error", err)
+			}
+		}()
 
 		cloneDir := filepath.Join(tmpDir, "repo")
 		cloneURL := fmt.Sprintf("https://github.com/%s.git", job.RepoFullName)
