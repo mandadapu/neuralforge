@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mandadapu/neuralforge/internal/validate"
+
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -90,7 +92,14 @@ func (k *KubernetesExecutor) jobName(id string) string {
 }
 
 // buildJobSpec constructs the Kubernetes Job spec for the given ExecutorJob.
-func (k *KubernetesExecutor) buildJobSpec(job ExecutorJob) *batchv1.Job {
+func (k *KubernetesExecutor) buildJobSpec(job ExecutorJob) (*batchv1.Job, error) {
+	if err := validate.RepoFullName(job.RepoPath); err != nil {
+		return nil, fmt.Errorf("unsafe repo path: %w", err)
+	}
+	if err := validate.BranchName(job.Branch); err != nil {
+		return nil, fmt.Errorf("unsafe branch name: %w", err)
+	}
+
 	backoffLimit := int32(0)
 	deadlineSeconds := int64(job.Timeout.Seconds())
 
@@ -114,7 +123,7 @@ fi
 			Namespace: k.namespace,
 			Labels: map[string]string{
 				"app":    "neuralforge",
-				"job-id": job.ID,
+				"job-id": k.jobName(job.ID),
 			},
 		},
 		Spec: batchv1.JobSpec{
@@ -203,13 +212,16 @@ fi
 				},
 			},
 		},
-	}
+	}, nil
 }
 
 // Run creates a Kubernetes Job, waits for completion, reads logs, and returns
 // the result.
 func (k *KubernetesExecutor) Run(ctx context.Context, job ExecutorJob) (ExecutorResult, error) {
-	k8sJob := k.buildJobSpec(job)
+	k8sJob, err := k.buildJobSpec(job)
+	if err != nil {
+		return ExecutorResult{}, fmt.Errorf("build job spec: %w", err)
+	}
 
 	created, err := k.client.BatchV1().Jobs(k.namespace).Create(ctx, k8sJob, metav1.CreateOptions{})
 	if err != nil {

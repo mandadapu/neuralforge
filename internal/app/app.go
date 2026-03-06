@@ -17,6 +17,7 @@ import (
 	"github.com/mandadapu/neuralforge/internal/llm"
 	"github.com/mandadapu/neuralforge/internal/pipeline"
 	"github.com/mandadapu/neuralforge/internal/store"
+	"github.com/mandadapu/neuralforge/internal/validate"
 	"github.com/mandadapu/neuralforge/internal/worker"
 )
 
@@ -115,6 +116,10 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 	switch e := event.(type) {
 	case *github.IssueLabeledEvent:
 		if e.Label != "neuralforge" {
+			return
+		}
+		if err := validate.RepoFullName(e.Repo.FullName); err != nil {
+			slog.Error("invalid repo name from webhook", "error", err, "repo", e.Repo.FullName)
 			return
 		}
 		jobID := fmt.Sprintf("%s#%d", e.Repo.FullName, e.Issue.Number)
