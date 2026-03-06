@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -40,7 +41,7 @@ func TestGetJobByIssue(t *testing.T) {
 func TestUpdateJobStatus(t *testing.T) {
 	s := newTestStore(t)
 	require.NoError(t, s.CreateJob(Job{ID: "job-3", RepoFullName: "o/r", IssueNumber: 1, Status: JobQueued}))
-	require.NoError(t, s.UpdateJobStatus("job-3", JobRunning, "architect"))
+	require.NoError(t, s.UpdateJobStatus(context.Background(), "job-3", JobRunning, "architect"))
 
 	got, err := s.GetJob("job-3")
 	require.NoError(t, err)
@@ -54,7 +55,7 @@ func TestListPendingJobs(t *testing.T) {
 	require.NoError(t, s.CreateJob(Job{ID: "j2", RepoFullName: "o/r", IssueNumber: 2, Status: JobRunning}))
 	require.NoError(t, s.CreateJob(Job{ID: "j3", RepoFullName: "o/r", IssueNumber: 3, Status: JobCompleted}))
 
-	jobs, err := s.ListPendingJobs(10)
+	jobs, err := s.ListPendingJobs(context.Background(), 10)
 	require.NoError(t, err)
 	assert.Len(t, jobs, 1)
 	assert.Equal(t, "j1", jobs[0].ID)

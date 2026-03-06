@@ -59,13 +59,18 @@ func (p *Pool) poll(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			jobs, err := p.store.ListPendingJobs(p.size)
+			jobs, err := p.store.ListPendingJobs(ctx, p.size)
 			if err != nil {
 				slog.Error("poll error", "error", err)
 				continue
 			}
 			for _, job := range jobs {
-				if err := p.store.UpdateJobStatus(job.ID, store.JobRunning, ""); err != nil {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
+				if err := p.store.UpdateJobStatus(ctx, job.ID, store.JobRunning, ""); err != nil {
 					slog.Error("update job status", "error", err)
 					continue
 				}

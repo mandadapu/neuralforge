@@ -17,7 +17,7 @@ type mockStore struct {
 	updated int32
 }
 
-func (m *mockStore) ListPendingJobs(limit int) ([]store.Job, error) {
+func (m *mockStore) ListPendingJobs(ctx context.Context, limit int) ([]store.Job, error) {
 	if len(m.jobs) == 0 {
 		return nil, nil
 	}
@@ -26,7 +26,7 @@ func (m *mockStore) ListPendingJobs(limit int) ([]store.Job, error) {
 	return []store.Job{j}, nil
 }
 
-func (m *mockStore) UpdateJobStatus(id string, status store.JobStatus, stage string) error {
+func (m *mockStore) UpdateJobStatus(ctx context.Context, id string, status store.JobStatus, stage string) error {
 	atomic.AddInt32(&m.updated, 1)
 	return nil
 }
@@ -71,4 +71,28 @@ func TestPoolProcessesJob(t *testing.T) {
 	time.Sleep(3 * time.Second)
 
 	assert.Equal(t, int32(1), atomic.LoadInt32(&processed))
+}
+
+func TestPoolStopsOnContextCancel(t *testing.T) {
+	ms := &mockStore{
+		jobs: []store.Job{
+			{ID: "j1", RepoFullName: "o/r", IssueNumber: 1, Status: store.JobQueued},
+			{ID: "j2", RepoFullName: "o/r", IssueNumber: 2, Status: store.JobQueued},
+		},
+	}
+
+	handler := func(ctx context.Context, job store.Job) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}
+
+	p := NewPool(1, ms, handler)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	p.Start(ctx)
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	// Pool should stop promptly — if goroutine leaks, test will timeout
+	time.Sleep(500 * time.Millisecond)
 }

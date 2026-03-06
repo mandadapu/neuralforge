@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -112,8 +113,8 @@ func (s *SQLiteStore) GetJobByIssue(repoFullName string, issueNumber int) (*Job,
 	return j, nil
 }
 
-func (s *SQLiteStore) UpdateJobStatus(id string, status JobStatus, stage string) error {
-	_, err := s.db.Exec(
+func (s *SQLiteStore) UpdateJobStatus(ctx context.Context, id string, status JobStatus, stage string) error {
+	_, err := s.db.ExecContext(ctx,
 		`UPDATE jobs SET status = ?, current_stage = ?, updated_at = ? WHERE id = ?`,
 		status, stage, time.Now().UTC(), id,
 	)
@@ -157,8 +158,8 @@ func (s *SQLiteStore) CompleteJob(id string, status JobStatus) error {
 	return nil
 }
 
-func (s *SQLiteStore) ListPendingJobs(limit int) ([]Job, error) {
-	rows, err := s.db.Query(
+func (s *SQLiteStore) ListPendingJobs(ctx context.Context, limit int) ([]Job, error) {
+	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, repo_full_name, issue_number, issue_title, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at
 		 FROM jobs WHERE status = ? ORDER BY created_at ASC LIMIT ?`,
 		JobQueued, limit,

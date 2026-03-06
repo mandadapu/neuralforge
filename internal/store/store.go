@@ -1,6 +1,9 @@
 package store
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type JobStatus string
 
@@ -38,11 +41,11 @@ type Store interface {
 	CreateJob(job Job) error
 	GetJob(id string) (*Job, error)
 	GetJobByIssue(repoFullName string, issueNumber int) (*Job, error)
-	UpdateJobStatus(id string, status JobStatus, stage string) error
+	UpdateJobStatus(ctx context.Context, id string, status JobStatus, stage string) error
 	UpdateJobError(id string, errMsg string) error
 	UpdateJobCost(id string, cost float64) error
 	CompleteJob(id string, status JobStatus) error
-	ListPendingJobs(limit int) ([]Job, error)
+	ListPendingJobs(ctx context.Context, limit int) ([]Job, error)
 	UpsertRepoContext(ctx RepoContextRecord) error
 	GetRepoContext(repoFullName string) (*RepoContextRecord, error)
 	Migrate() error
