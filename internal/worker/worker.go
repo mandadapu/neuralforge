@@ -25,11 +25,11 @@ func (w *Worker) Run(ctx context.Context, jobs <-chan store.Job) {
 
 		if err := w.handler(ctx, job); err != nil {
 			slog.Error("job failed", "worker", w.id, "job", job.ID, "error", err)
-			_ = w.store.UpdateJobError(job.ID, err.Error())
+			_ = w.store.UpdateJobError(ctx, job.ID, err.Error())
 			continue
 		}
 
-		_ = w.store.CompleteJob(job.ID, store.JobCompleted)
+		_ = w.store.CompleteJob(ctx, job.ID, store.JobCompleted)
 		slog.Info("job completed", "worker", w.id, "job", job.ID)
 	}
 }
