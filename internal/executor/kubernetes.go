@@ -19,6 +19,25 @@ import (
 )
 
 var nonAlphanumeric = regexp.MustCompile(`[^a-z0-9]+`)
+var validBranch = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9/_.\-]*$`)
+var validRepoPath = regexp.MustCompile(`^[a-zA-Z0-9._-]+/[a-zA-Z0-9._-]+$`)
+
+func validateBranch(branch string) error {
+	if len(branch) == 0 || len(branch) > 255 {
+		return fmt.Errorf("branch name invalid length: %d", len(branch))
+	}
+	if !validBranch.MatchString(branch) {
+		return fmt.Errorf("branch name contains invalid characters: %s", branch)
+	}
+	return nil
+}
+
+func validateRepoPath(path string) error {
+	if !validRepoPath.MatchString(path) {
+		return fmt.Errorf("repo path must be owner/repo format: %s", path)
+	}
+	return nil
+}
 
 // KubernetesExecutor runs jobs as Kubernetes Jobs using client-go.
 type KubernetesExecutor struct {
@@ -89,6 +108,18 @@ func (k *KubernetesExecutor) jobName(id string) string {
 	return name
 }
 
+// promptConfigMapName derives a DNS-safe ConfigMap name from a job ID.
+func (k *KubernetesExecutor) promptConfigMapName(id string) string {
+	name := "neuralforge-prompt-" + strings.ToLower(id)
+	name = nonAlphanumeric.ReplaceAllString(name, "-")
+	name = strings.Trim(name, "-")
+	if len(name) > 63 {
+		name = name[:63]
+		name = strings.TrimRight(name, "-")
+	}
+	return name
+}
+
 // buildJobSpec constructs the Kubernetes Job spec for the given ExecutorJob.
 func (k *KubernetesExecutor) buildJobSpec(job ExecutorJob) *batchv1.Job {
 	backoffLimit := int32(0)
@@ -96,17 +127,19 @@ func (k *KubernetesExecutor) buildJobSpec(job ExecutorJob) *batchv1.Job {
 
 	// Shell script for the main container: configure git, create branch,
 	// run claude, commit and push if changes exist.
-	script := fmt.Sprintf(`set -e
+	// All user-controlled values are passed via env vars or ConfigMap volume
+	// to prevent shell injection.
+	script := `set -e
 git config user.email "neuralforge@bot"
 git config user.name "NeuralForge"
-git checkout -b %s
-claude -p %q --dangerously-skip-permissions
+git checkout -b "$BRANCH"
+claude -p "$(cat /etc/neuralforge/prompt)" --dangerously-skip-permissions
 if [ -n "$(git status --porcelain)" ]; then
   git add -A
   git commit -m "neuralforge: apply changes"
-  git push origin %s
+  git push origin "$BRANCH"
 fi
-`, job.Branch, job.Prompt, job.Branch)
+`
 
 	return &batchv1.Job{
 		ObjectMeta: metav1.ObjectMeta{
@@ -125,12 +158,9 @@ fi
 					RestartPolicy: corev1.RestartPolicyNever,
 					InitContainers: []corev1.Container{
 						{
-							Name:  "git-clone",
-							Image: "alpine/git",
-							Command: []string{"sh", "-c", fmt.Sprintf(
-								`git clone https://x-access-token:$(GIT_TOKEN)@github.com/%s.git /workspace`,
-								job.RepoPath,
-							)},
+							Name:    "git-clone",
+							Image:   "alpine/git",
+							Command: []string{"sh", "-c", `git clone "https://x-access-token:${GIT_TOKEN}@github.com/${REPO_PATH}.git" /workspace`},
 							Env: []corev1.EnvVar{
 								{
 									Name: "GIT_TOKEN",
@@ -142,6 +172,10 @@ fi
 											Key: "token",
 										},
 									},
+								},
+								{
+									Name:  "REPO_PATH",
+									Value: job.RepoPath,
 								},
 							},
 							VolumeMounts: []corev1.VolumeMount{
@@ -176,6 +210,10 @@ fi
 										},
 									},
 								},
+								{
+									Name:  "BRANCH",
+									Value: job.Branch,
+								},
 							},
 							Resources: corev1.ResourceRequirements{
 								Requests: corev1.ResourceList{
@@ -189,6 +227,7 @@ fi
 							},
 							VolumeMounts: []corev1.VolumeMount{
 								{Name: "workspace", MountPath: "/workspace"},
+								{Name: "prompt", MountPath: "/etc/neuralforge", ReadOnly: true},
 							},
 						},
 					},
@@ -197,6 +236,16 @@ fi
 							Name: "workspace",
 							VolumeSource: corev1.VolumeSource{
 								EmptyDir: &corev1.EmptyDirVolumeSource{},
+							},
+						},
+						{
+							Name: "prompt",
+							VolumeSource: corev1.VolumeSource{
+								ConfigMap: &corev1.ConfigMapVolumeSource{
+									LocalObjectReference: corev1.LocalObjectReference{
+										Name: k.promptConfigMapName(job.ID),
+									},
+								},
 							},
 						},
 					},
@@ -209,6 +258,26 @@ fi
 // Run creates a Kubernetes Job, waits for completion, reads logs, and returns
 // the result.
 func (k *KubernetesExecutor) Run(ctx context.Context, job ExecutorJob) (ExecutorResult, error) {
+	if err := validateBranch(job.Branch); err != nil {
+		return ExecutorResult{}, fmt.Errorf("invalid branch: %w", err)
+	}
+	if err := validateRepoPath(job.RepoPath); err != nil {
+		return ExecutorResult{}, fmt.Errorf("invalid repo path: %w", err)
+	}
+
+	// Create ConfigMap with prompt content
+	cm := &corev1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      k.promptConfigMapName(job.ID),
+			Namespace: k.namespace,
+			Labels:    map[string]string{"app": "neuralforge", "job-id": job.ID},
+		},
+		Data: map[string]string{"prompt": job.Prompt},
+	}
+	if _, err := k.client.CoreV1().ConfigMaps(k.namespace).Create(ctx, cm, metav1.CreateOptions{}); err != nil {
+		return ExecutorResult{}, fmt.Errorf("failed to create prompt configmap: %w", err)
+	}
+
 	k8sJob := k.buildJobSpec(job)
 
 	created, err := k.client.BatchV1().Jobs(k.namespace).Create(ctx, k8sJob, metav1.CreateOptions{})
@@ -291,11 +360,20 @@ func (k *KubernetesExecutor) readLogs(ctx context.Context, jobName string) (stdo
 	return string(data), ""
 }
 
-// Cleanup deletes the Kubernetes Job and its pods using background propagation.
+// Cleanup deletes the Kubernetes Job, its pods, and the prompt ConfigMap.
 func (k *KubernetesExecutor) Cleanup(ctx context.Context, jobID string) error {
 	name := k.jobName(jobID)
 	propagation := metav1.DeletePropagationBackground
-	return k.client.BatchV1().Jobs(k.namespace).Delete(ctx, name, metav1.DeleteOptions{
+	err := k.client.BatchV1().Jobs(k.namespace).Delete(ctx, name, metav1.DeleteOptions{
 		PropagationPolicy: &propagation,
 	})
+	// Best-effort cleanup of prompt ConfigMap
+	cmErr := k.client.CoreV1().ConfigMaps(k.namespace).Delete(ctx, k.promptConfigMapName(jobID), metav1.DeleteOptions{})
+	if err != nil {
+		return err
+	}
+	if cmErr != nil {
+		return fmt.Errorf("failed to delete prompt configmap: %w", cmErr)
+	}
+	return nil
 }
