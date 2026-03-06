@@ -171,6 +171,12 @@ func (a *App) buildJobHandler() worker.JobHandler {
 	return func(ctx context.Context, job store.Job) error {
 		slog.Info("processing job", "job_id", job.ID, "repo", job.RepoFullName, "issue", job.IssueNumber)
 
+		defer func() {
+			if err := exec.Cleanup(ctx, job.ID); err != nil {
+				slog.Warn("executor cleanup failed", "job_id", job.ID, "executor", exec.Name(), "error", err)
+			}
+		}()
+
 		// 1. Create temp dir and clone the repo.
 		tmpDir, err := os.MkdirTemp("", "neuralforge-*")
 		if err != nil {
