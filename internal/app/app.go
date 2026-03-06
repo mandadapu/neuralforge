@@ -6,10 +6,16 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/mandadapu/neuralforge/internal/config"
+	"github.com/mandadapu/neuralforge/internal/executor"
+	"github.com/mandadapu/neuralforge/internal/git"
 	"github.com/mandadapu/neuralforge/internal/github"
+	"github.com/mandadapu/neuralforge/internal/llm"
+	"github.com/mandadapu/neuralforge/internal/pipeline"
 	"github.com/mandadapu/neuralforge/internal/store"
 	"github.com/mandadapu/neuralforge/internal/worker"
 )
@@ -129,12 +135,79 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 	}
 }
 
-// buildJobHandler returns a placeholder handler that logs job processing.
-// Full pipeline wiring will be added in Task 16.
+// buildJobHandler creates the LLM backend and executor, then returns a handler
+// that clones the repo, builds pipeline state, and runs the pipeline engine.
 func (a *App) buildJobHandler() worker.JobHandler {
+	// Create LLM backend based on config.
+	var backend llm.LLM
+	switch a.cfg.LLM.DefaultProvider {
+	case "openai":
+		backend = llm.NewOpenAI(a.cfg.LLM.OpenAI.APIKey, a.cfg.LLM.OpenAI.Model)
+	default:
+		backend = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
+	}
+
+	// Create Docker executor from config.
+	exec := executor.NewDocker(a.cfg.Executor.Docker.Image)
+
 	return func(ctx context.Context, job store.Job) error {
 		slog.Info("processing job", "job_id", job.ID, "repo", job.RepoFullName, "issue", job.IssueNumber)
-		// TODO(task-16): wire pipeline engine here
+
+		// 1. Create temp dir and clone the repo.
+		tmpDir, err := os.MkdirTemp("", "neuralforge-*")
+		if err != nil {
+			return fmt.Errorf("create temp dir: %w", err)
+		}
+		defer os.RemoveAll(tmpDir)
+
+		cloneDir := filepath.Join(tmpDir, "repo")
+		cloneURL := fmt.Sprintf("https://github.com/%s.git", job.RepoFullName)
+		// TODO: pass GitHub App installation token once App auth is implemented.
+		if _, err := git.Clone(cloneURL, cloneDir, ""); err != nil {
+			return fmt.Errorf("clone repo: %w", err)
+		}
+
+		// 2. Build PipelineState from the job.
+		state := &pipeline.PipelineState{
+			JobID: job.ID,
+			Issue: pipeline.GitHubIssue{
+				Number: job.IssueNumber,
+				Title:  job.IssueTitle,
+			},
+			Repo: pipeline.RepoContext{
+				FullName:      job.RepoFullName,
+				DefaultBranch: "main",
+				CloneURL:      cloneURL,
+				LocalPath:     cloneDir,
+			},
+		}
+
+		// 3. Create pipeline stages.
+		// Wire the first 5 stages; PR/Review/Merge/Deploy require GitHub App auth.
+		stages := []pipeline.Stage{
+			pipeline.NewArchitectStage(backend),
+			pipeline.NewSecurityStage(backend),
+			pipeline.NewExecuteStage(exec, a.cfg.Executor.Docker.Timeout),
+			pipeline.NewVerifyStage("make test"),
+			pipeline.NewComplianceStage(2000, 50),
+		}
+		// TODO: wire remaining stages once GitHub App authentication is implemented:
+		//   pipeline.NewPRStage(ghClient)
+		//   pipeline.NewReviewStage(backend, ghClient)
+		//   pipeline.NewMergeStage(ghClient)
+		//   pipeline.NewDeployStage(ghClient)
+
+		// 4. Create engine with budget from config.
+		engine := pipeline.NewEngine(stages, &pipeline.EngineConfig{
+			BudgetUSD: 5.0,
+		})
+
+		// 5. Run the pipeline.
+		if err := engine.Run(ctx, state); err != nil {
+			return fmt.Errorf("pipeline run: %w", err)
+		}
+
+		slog.Info("job completed", "job_id", job.ID, "cost", state.Cost)
 		return nil
 	}
 }

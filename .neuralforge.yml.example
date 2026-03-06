@@ -1,0 +1,27 @@
+neuralforge:
+  trigger:
+    label: "neuralforge"
+
+  llm:
+    provider: claude
+    model: claude-sonnet-4-5-20250514
+
+  executor:
+    type: docker
+
+  pipeline:
+    architecture_review: true
+    security_review: true
+    verification:
+      command: "make test"
+    compliance:
+      max_diff_lines: 2000
+      blocked_licenses: [AGPL-3.0]
+    code_review: true
+    auto_merge: false
+    ci_deploy: false
+
+  limits:
+    max_files_changed: 50
+    timeout_minutes: 30
+    budget_usd: 5.0
