@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -38,18 +39,19 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	defer cancel()
 	_, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS jobs (
-			id             TEXT PRIMARY KEY,
-			repo_full_name TEXT NOT NULL,
-			issue_number   INTEGER NOT NULL,
-			issue_title    TEXT NOT NULL DEFAULT '',
-			status         TEXT NOT NULL DEFAULT 'queued',
-			current_stage  TEXT NOT NULL DEFAULT '',
-			pipeline_state TEXT NOT NULL DEFAULT '',
-			error          TEXT NOT NULL DEFAULT '',
-			cost_usd       REAL NOT NULL DEFAULT 0,
-			created_at     DATETIME NOT NULL,
-			updated_at     DATETIME NOT NULL,
-			completed_at   DATETIME
+			id              TEXT PRIMARY KEY,
+			repo_full_name  TEXT NOT NULL,
+			issue_number    INTEGER NOT NULL,
+			issue_title     TEXT NOT NULL DEFAULT '',
+			installation_id INTEGER NOT NULL DEFAULT 0,
+			status          TEXT NOT NULL DEFAULT 'queued',
+			current_stage   TEXT NOT NULL DEFAULT '',
+			pipeline_state  TEXT NOT NULL DEFAULT '',
+			error           TEXT NOT NULL DEFAULT '',
+			cost_usd        REAL NOT NULL DEFAULT 0,
+			created_at      DATETIME NOT NULL,
+			updated_at      DATETIME NOT NULL,
+			completed_at    DATETIME
 		);
 
 		CREATE TABLE IF NOT EXISTS repo_contexts (
@@ -63,7 +65,22 @@ func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("migrate: %w", err)
 	}
+
+	// Add installation_id column for databases created before this migration.
+	_, err = s.db.ExecContext(ctx,
+		`ALTER TABLE jobs ADD COLUMN installation_id INTEGER NOT NULL DEFAULT 0`)
+	if err != nil {
+		// Ignore "duplicate column" error — column already exists.
+		if !isDuplicateColumnErr(err) {
+			return fmt.Errorf("migrate add installation_id: %w", err)
+		}
+	}
+
 	return nil
+}
+
+func isDuplicateColumnErr(err error) bool {
+	return strings.Contains(err.Error(), "duplicate column")
 }
 
 func (s *SQLiteStore) CreateJob(ctx context.Context, job Job) error {
@@ -71,11 +88,11 @@ func (s *SQLiteStore) CreateJob(ctx context.Context, job Job) error {
 	defer cancel()
 	now := time.Now().UTC()
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO jobs (id, repo_full_name, issue_number, issue_title, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO jobs (id, repo_full_name, issue_number, issue_title, installation_id, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		job.ID, job.RepoFullName, job.IssueNumber, job.IssueTitle,
-		job.Status, job.CurrentStage, job.PipelineState, job.Error,
-		job.CostUSD, now, now, nil,
+		job.InstallationID, job.Status, job.CurrentStage, job.PipelineState,
+		job.Error, job.CostUSD, now, now, nil,
 	)
 	if err != nil {
 		return fmt.Errorf("create job: %w", err)
@@ -88,8 +105,8 @@ func (s *SQLiteStore) scanJob(row interface{ Scan(...any) error }) (*Job, error)
 	var completedAt sql.NullTime
 	err := row.Scan(
 		&j.ID, &j.RepoFullName, &j.IssueNumber, &j.IssueTitle,
-		&j.Status, &j.CurrentStage, &j.PipelineState, &j.Error,
-		&j.CostUSD, &j.CreatedAt, &j.UpdatedAt, &completedAt,
+		&j.InstallationID, &j.Status, &j.CurrentStage, &j.PipelineState,
+		&j.Error, &j.CostUSD, &j.CreatedAt, &j.UpdatedAt, &completedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -104,7 +121,7 @@ func (s *SQLiteStore) GetJob(ctx context.Context, id string) (*Job, error) {
 	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
 	defer cancel()
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, repo_full_name, issue_number, issue_title, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at
+		`SELECT id, repo_full_name, issue_number, issue_title, installation_id, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at
 		 FROM jobs WHERE id = ?`, id,
 	)
 	j, err := s.scanJob(row)
@@ -118,7 +135,7 @@ func (s *SQLiteStore) GetJobByIssue(ctx context.Context, repoFullName string, is
 	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
 	defer cancel()
 	row := s.db.QueryRowContext(ctx,
-		`SELECT id, repo_full_name, issue_number, issue_title, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at
+		`SELECT id, repo_full_name, issue_number, issue_title, installation_id, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at
 		 FROM jobs WHERE repo_full_name = ? AND issue_number = ?`, repoFullName, issueNumber,
 	)
 	j, err := s.scanJob(row)
@@ -185,7 +202,7 @@ func (s *SQLiteStore) ListPendingJobs(ctx context.Context, limit int) ([]Job, er
 	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
 	defer cancel()
 	rows, err := s.db.QueryContext(ctx,
-		`SELECT id, repo_full_name, issue_number, issue_title, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at
+		`SELECT id, repo_full_name, issue_number, issue_title, installation_id, status, current_stage, pipeline_state, error, cost_usd, created_at, updated_at, completed_at
 		 FROM jobs WHERE status = ? ORDER BY created_at ASC LIMIT ?`,
 		JobQueued, limit,
 	)
