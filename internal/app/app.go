@@ -203,7 +203,9 @@ func (a *App) buildJobHandler() worker.JobHandler {
 		slog.Info("processing job", "job_id", job.ID, "repo", job.RepoFullName, "issue", job.IssueNumber)
 
 		defer func() {
-			if err := exec.Cleanup(ctx, job.ID); err != nil {
+			cleanupCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			if err := exec.Cleanup(cleanupCtx, job.ID); err != nil {
 				slog.Warn("executor cleanup failed", "job_id", job.ID, "executor", exec.Name(), "error", err)
 			}
 		}()
