@@ -45,21 +45,22 @@ type StageLog struct {
 }
 
 type PipelineState struct {
-	JobID         string            `json:"job_id"`
-	Issue         GitHubIssue       `json:"issue"`
-	Repo          RepoContext       `json:"repo"`
-	Memory        string            `json:"memory"`
-	Plan          string            `json:"plan"`
-	SecurityNotes string            `json:"security_notes"`
-	Changes       []FileChange      `json:"changes"`
-	TestResults   *TestReport       `json:"test_results"`
-	Compliance    *ComplianceReport `json:"compliance"`
-	PRURL         string            `json:"pr_url"`
-	PRNumber      int               `json:"pr_number"`
-	ReviewNotes   string            `json:"review_notes"`
-	Merged        bool              `json:"merged"`
-	DeployURL     string            `json:"deploy_url"`
-	StartedAt     time.Time         `json:"started_at"`
-	Cost          float64           `json:"cost"`
-	Stages        []StageLog        `json:"stages"`
+	JobID          string            `json:"job_id"`
+	InstallationID int64             `json:"installation_id"`
+	Issue          GitHubIssue       `json:"issue"`
+	Repo           RepoContext       `json:"repo"`
+	Memory         string            `json:"memory"`
+	Plan           string            `json:"plan"`
+	SecurityNotes  string            `json:"security_notes"`
+	Changes        []FileChange      `json:"changes"`
+	TestResults    *TestReport       `json:"test_results"`
+	Compliance     *ComplianceReport `json:"compliance"`
+	PRURL          string            `json:"pr_url"`
+	PRNumber       int               `json:"pr_number"`
+	ReviewNotes    string            `json:"review_notes"`
+	Merged         bool              `json:"merged"`
+	DeployURL      string            `json:"deploy_url"`
+	StartedAt      time.Time         `json:"started_at"`
+	Cost           float64           `json:"cost"`
+	Stages         []StageLog        `json:"stages"`
 }

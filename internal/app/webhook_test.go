@@ -4,12 +4,15 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestWebhookSignatureValidation(t *testing.T) {
@@ -60,4 +63,71 @@ func TestWebhookRejectsInvalidSignature(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+}
+
+// errReader is an io.Reader that always returns an error.
+type errReader struct{}
+
+func (errReader) Read([]byte) (int, error) {
+	return 0, errors.New("simulated read error")
+}
+
+// errResponseWriter is an http.ResponseWriter whose Write always fails.
+type errResponseWriter struct {
+	header     http.Header
+	statusCode int
+}
+
+func newErrResponseWriter() *errResponseWriter {
+	return &errResponseWriter{header: make(http.Header)}
+}
+
+func (w *errResponseWriter) Header() http.Header         { return w.header }
+func (w *errResponseWriter) WriteHeader(statusCode int)   { w.statusCode = statusCode }
+func (w *errResponseWriter) Write([]byte) (int, error) {
+	return 0, errors.New("simulated write error")
+}
+
+func TestGhAppWebhookHandler_Success(t *testing.T) {
+	app := &App{}
+	handler := app.ghAppWebhookHandler()
+
+	body := `{"action":"push"}`
+	req := httptest.NewRequest("POST", "/webhooks/github", strings.NewReader(body))
+	req.Header.Set("X-GitHub-Event", "push")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	require.JSONEq(t, `{"ok":true}`, rr.Body.String())
+}
+
+func TestGhAppWebhookHandler_ReadError(t *testing.T) {
+	app := &App{}
+	handler := app.ghAppWebhookHandler()
+
+	req := httptest.NewRequest("POST", "/webhooks/github", nil)
+	req.Body = io.NopCloser(errReader{})
+	req.Header.Set("X-GitHub-Event", "push")
+
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+
+	assert.Equal(t, http.StatusBadRequest, rr.Code)
+}
+
+func TestGhAppWebhookHandler_WriteError(t *testing.T) {
+	app := &App{}
+	handler := app.ghAppWebhookHandler()
+
+	body := `{"action":"push"}`
+	req := httptest.NewRequest("POST", "/webhooks/github", strings.NewReader(body))
+	req.Header.Set("X-GitHub-Event", "push")
+
+	w := newErrResponseWriter()
+	// Should not panic even when Write fails.
+	handler.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.statusCode)
 }

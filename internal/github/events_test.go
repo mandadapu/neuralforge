@@ -22,7 +22,8 @@ func TestParseIssueLabeled(t *testing.T) {
 			"full_name": "owner/repo",
 			"default_branch": "main",
 			"clone_url": "https://github.com/owner/repo.git"
-		}
+		},
+		"installation": {"id": 12345}
 	}`)
 
 	evt, err := ParseWebhookEvent("issues", payload)
@@ -33,6 +34,7 @@ func TestParseIssueLabeled(t *testing.T) {
 	assert.Equal(t, "neuralforge", ie.Label)
 	assert.Equal(t, 42, ie.Issue.Number)
 	assert.Equal(t, "owner/repo", ie.Repo.FullName)
+	assert.Equal(t, int64(12345), ie.InstallationID)
 }
 
 func TestParseIssueComment(t *testing.T) {
@@ -40,7 +42,8 @@ func TestParseIssueComment(t *testing.T) {
 		"action": "created",
 		"comment": {"body": "/retry", "user": {"login": "bob"}},
 		"issue": {"number": 42, "title": "Fix it"},
-		"repository": {"full_name": "owner/repo", "default_branch": "main", "clone_url": "https://github.com/owner/repo.git"}
+		"repository": {"full_name": "owner/repo", "default_branch": "main", "clone_url": "https://github.com/owner/repo.git"},
+		"installation": {"id": 12345}
 	}`)
 
 	evt, err := ParseWebhookEvent("issue_comment", payload)
@@ -50,6 +53,7 @@ func TestParseIssueComment(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, "/retry", ce.Command)
 	assert.Equal(t, 42, ce.Issue.Number)
+	assert.Equal(t, int64(12345), ce.InstallationID)
 }
 
 func TestParseUnknownEvent(t *testing.T) {
