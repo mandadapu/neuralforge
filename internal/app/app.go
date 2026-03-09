@@ -171,13 +171,19 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 // buildJobHandler creates the LLM backend and executor, then returns a handler
 // that clones the repo, builds pipeline state, and runs the pipeline engine.
 func (a *App) buildJobHandler() worker.JobHandler {
-	// Create LLM backend based on config.
-	var backend llm.LLM
-	switch a.cfg.LLM.DefaultProvider {
-	case "openai":
-		backend = llm.NewOpenAI(a.cfg.LLM.OpenAI.APIKey, a.cfg.LLM.OpenAI.Model)
-	default:
-		backend = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
+	// Select the correct provider config and create an audited LLM backend.
+	var providerCfg config.ProviderConfig
+	if a.cfg.LLM.DefaultProvider == "openai" {
+		providerCfg = a.cfg.LLM.OpenAI
+	} else {
+		providerCfg = a.cfg.LLM.Claude
+	}
+	backend, err := llm.NewFactory(a.cfg.LLM.DefaultProvider, providerCfg.APIKey, providerCfg.Model)
+	if err != nil {
+		slog.Error("failed to create LLM backend", "error", err)
+		return func(ctx context.Context, job store.Job) error {
+			return fmt.Errorf("LLM backend init: %w", err)
+		}
 	}
 
 	// Create executor based on config.
