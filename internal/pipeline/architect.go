@@ -29,6 +29,8 @@ func (s *ArchitectStage) Run(ctx context.Context, state *PipelineState) (StageRe
 	)
 
 	resp, err := s.llm.Complete(ctx, llm.CompletionRequest{
+		// SECURITY: static trusted system prompt — no untrusted data interpolated here.
+		// Untrusted content (issue body, codebase context) is passed in the user message only.
 		System: "You are a software architect creating implementation plans.",
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: prompt},
