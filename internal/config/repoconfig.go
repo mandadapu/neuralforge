@@ -1,6 +1,13 @@
 package config
 
-import "gopkg.in/yaml.v3"
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
+
+// maxYAMLSize limits YAML input to 1 MiB to prevent memory exhaustion (OSV-GO-2022-0603).
+const maxYAMLSize = 1 << 20
 
 type RepoConfig struct {
 	Trigger  TriggerConfig  `yaml:"trigger"`
@@ -64,6 +71,10 @@ func ParseRepoConfig(data []byte) (RepoConfig, error) {
 
 	if len(data) == 0 {
 		return cfg, nil
+	}
+
+	if len(data) > maxYAMLSize {
+		return cfg, fmt.Errorf("config: YAML input too large (%d bytes, max %d)", len(data), maxYAMLSize)
 	}
 
 	var wrapper repoConfigWrapper
