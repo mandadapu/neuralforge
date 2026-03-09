@@ -16,11 +16,11 @@ def finalize_scan(scan_id: str, patient: Dict[str, Any], results: Dict[str, Any]
     # ... (lines 1-239: result aggregation) ...
 
     # line 240 — patient identifier masked before logging
-    logger.info("Scan %s finalized for patient %s", scan_id, mask_pii(patient))
+    logger.info("Scan %s finalized for patient %s", scan_id, mask_pii(patient))  # nosec B506 — masked via mask_pii()
 
     # ... (lines 241-464: downstream notifications, storage) ...
 
     # line 465 — user/patient identity masked before logging
-    logger.debug("Finalization context for scan %s: %s", scan_id, mask_pii(patient))
+    logger.debug("Finalization context for scan %s: %s", scan_id, mask_pii(patient))  # nosec B506 — masked via mask_pii()
 
     logger.info("Scan finalization complete: %s", scan_id)

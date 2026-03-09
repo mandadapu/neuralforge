@@ -14,7 +14,7 @@ def send_email(recipient_email: str, subject: str, body: str) -> bool:
     # ... (lines 1-61: SMTP setup) ...
 
     # line 62 — recipient email masked before logging
-    logger.info("Sending email to %s", mask_email(recipient_email))
+    logger.info("Sending email to %s", mask_email(recipient_email))  # nosec B506 — masked via mask_email()
 
     # ... (delivery logic) ...
     return True
@@ -29,7 +29,7 @@ def send_templated_email(
     # ... (lines 63-90: template rendering) ...
 
     # line 91 — template context masked before logging
-    logger.debug("Email context: %s", mask_pii(context))
+    logger.debug("Email context: %s", mask_pii(context))  # nosec B506 — masked via mask_pii()
 
     # ... (delivery logic) ...
     return True

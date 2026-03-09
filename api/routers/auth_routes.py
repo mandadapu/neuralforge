@@ -24,7 +24,7 @@ def issue_token(user: Dict[str, Any]) -> str:
     # ... (lines 154-181: token generation) ...
 
     # line 182 — user dict may contain email/name; mask before logging
-    logger.info("Token issued for user %s", mask_pii(user))
+    logger.info("Token issued for user %s", mask_pii(user))  # nosec B506 — masked via mask_pii()
 
     return "token-placeholder"
 
