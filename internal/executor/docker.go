@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -17,6 +18,21 @@ func NewDocker(image string) *DockerExecutor {
 }
 
 func (d *DockerExecutor) Name() string { return "docker" }
+
+// validateLocalPath checks that a path is absolute and clean to prevent
+// path traversal or Docker volume-spec injection (colon is the separator).
+func validateLocalPath(path string) error {
+	if !filepath.IsAbs(path) {
+		return fmt.Errorf("repo path must be absolute: %q", path)
+	}
+	if strings.Contains(path, ":") {
+		return fmt.Errorf("repo path must not contain ':': %q", path)
+	}
+	if path != filepath.Clean(path) {
+		return fmt.Errorf("repo path must be clean (no traversal): %q", path)
+	}
+	return nil
+}
 
 func (d *DockerExecutor) buildArgs(job ExecutorJob) []string {
 	args := []string{
@@ -34,6 +50,13 @@ func (d *DockerExecutor) buildArgs(job ExecutorJob) []string {
 }
 
 func (d *DockerExecutor) Run(ctx context.Context, job ExecutorJob) (ExecutorResult, error) {
+	if err := validateLocalPath(job.RepoPath); err != nil {
+		return ExecutorResult{}, fmt.Errorf("invalid repo path: %w", err)
+	}
+	if err := validateBranch(job.Branch); err != nil {
+		return ExecutorResult{}, fmt.Errorf("invalid branch: %w", err)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, job.Timeout)
 	defer cancel()
 
