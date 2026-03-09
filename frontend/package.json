@@ -1,0 +1,7 @@
+{
+  "name": "neuralforge-frontend",
+  "version": "0.0.1",
+  "description": "NeuralForge frontend",
+  "license": "MIT",
+  "private": true
+}
