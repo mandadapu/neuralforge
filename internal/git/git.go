@@ -4,8 +4,21 @@ import (
 	"bytes"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 )
+
+var validBranchName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9/_.\-]*$`)
+
+func validateBranchName(name string) error {
+	if len(name) == 0 || len(name) > 255 {
+		return fmt.Errorf("branch name invalid length: %d", len(name))
+	}
+	if !validBranchName.MatchString(name) {
+		return fmt.Errorf("branch name contains invalid characters: %s", name)
+	}
+	return nil
+}
 
 type Git struct {
 	dir string
@@ -38,11 +51,17 @@ func (g *Git) run(args ...string) (string, error) {
 }
 
 func (g *Git) CreateBranch(name string) error {
+	if err := validateBranchName(name); err != nil {
+		return fmt.Errorf("create branch: %w", err)
+	}
 	_, err := g.run("checkout", "-b", name)
 	return err
 }
 
 func (g *Git) Checkout(name string) error {
+	if err := validateBranchName(name); err != nil {
+		return fmt.Errorf("checkout: %w", err)
+	}
 	_, err := g.run("checkout", name)
 	return err
 }

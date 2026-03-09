@@ -7,6 +7,30 @@ import (
 	"strings"
 )
 
+// allowedVerifyCommands is an allowlist of permitted build/test tool executables.
+// This prevents repo-supplied verify commands from executing arbitrary shell code
+// (e.g. "bash -c 'malicious'") on the NeuralForge server.
+var allowedVerifyCommands = map[string]bool{
+	"make":      true,
+	"go":        true,
+	"npm":       true,
+	"yarn":      true,
+	"pnpm":      true,
+	"python":    true,
+	"python3":   true,
+	"pytest":    true,
+	"mvn":       true,
+	"gradle":    true,
+	"gradlew":   true,
+	"./gradlew": true,
+	"cargo":     true,
+	"bundle":    true,
+	"rake":      true,
+	"composer":  true,
+	"mix":       true,
+	"rebar3":    true,
+}
+
 type VerifyStage struct {
 	command string
 }
@@ -34,6 +58,12 @@ func (s *VerifyStage) Run(_ context.Context, state *PipelineState) (StageResult,
 		return StageResult{
 			Status: StatusSkipped,
 			Output: "no verify command configured",
+		}, nil
+	}
+	if !allowedVerifyCommands[parts[0]] {
+		return StageResult{
+			Status: StatusFailed,
+			Output: fmt.Sprintf("verify command not allowed: %s", parts[0]),
 		}, nil
 	}
 	cmd := exec.Command(parts[0], parts[1:]...)
