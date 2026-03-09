@@ -163,19 +163,14 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 	}
 }
 
-// healthHandler handles GET /health. It returns a minimal response and
-// intentionally excludes model names, provider info, API keys, and any LLM
-// configuration to comply with llm_010 (do not serve model metadata publicly).
+// healthHandler handles GET /health with a minimal status response.
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-	// Only GET is meaningful for a health check; reject others.
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	// Intentionally minimal: do NOT include model names, provider info,
-	// API keys, or any LLM configuration (llm_010).
 	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
 		slog.Error("failed to write health response", "error", err)
 	}
