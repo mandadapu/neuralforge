@@ -131,7 +131,8 @@ class TestNoPiiInLogs:
         with caplog.at_level(logging.DEBUG):
             logger = logging.getLogger("test.pii")
             email = "grace@example.com"
-            logger.info("Login attempt for: %s", mask_email(email))
+            masked_email = mask_email(email)
+            logger.info("Login attempt for: %s", masked_email)
 
         assert "grace@example.com" not in caplog.text
         assert "grace" not in caplog.text.split("Login attempt for: ")[1]
