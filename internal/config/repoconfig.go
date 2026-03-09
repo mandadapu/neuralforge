@@ -1,6 +1,14 @@
 package config
 
-import "gopkg.in/yaml.v3"
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
+
+// maxRepoConfigSize is the maximum allowed size for a .neuralforge.yaml file.
+// This guards against DoS via crafted YAML documents (GHSA-hp87-p4gw-j4gq).
+const maxRepoConfigSize = 64 * 1024 // 64 KiB
 
 type RepoConfig struct {
 	Trigger  TriggerConfig  `yaml:"trigger"`
@@ -64,6 +72,10 @@ func ParseRepoConfig(data []byte) (RepoConfig, error) {
 
 	if len(data) == 0 {
 		return cfg, nil
+	}
+
+	if len(data) > maxRepoConfigSize {
+		return cfg, fmt.Errorf("repo config too large: %d bytes (max %d)", len(data), maxRepoConfigSize)
 	}
 
 	var wrapper repoConfigWrapper
