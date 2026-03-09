@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -68,6 +69,8 @@ func (c *ClaudeBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 	if req.Temperature > 0 {
 		params.Temperature = param.NewOpt(req.Temperature)
 	}
+
+	slog.Info("llm call", "backend", "claude", "agent", req.AgentName, "model", model)
 
 	resp, err := withRetry(ctx, DefaultRetryConfig, func() (*anthropic.Message, error) {
 		return c.client.Messages.New(ctx, params)
