@@ -1,6 +1,14 @@
 package config
 
-import "gopkg.in/yaml.v3"
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
+
+// maxRepoConfigSize is the maximum allowed size of a repo config file (64 KB).
+// This guards against DoS via excessively large YAML inputs (see OSV-GO-2022-0603).
+const maxRepoConfigSize = 64 * 1024
 
 type RepoConfig struct {
 	Trigger  TriggerConfig  `yaml:"trigger"`
@@ -64,6 +72,10 @@ func ParseRepoConfig(data []byte) (RepoConfig, error) {
 
 	if len(data) == 0 {
 		return cfg, nil
+	}
+
+	if len(data) > maxRepoConfigSize {
+		return cfg, fmt.Errorf("config: repo config exceeds maximum allowed size of %d bytes", maxRepoConfigSize)
 	}
 
 	var wrapper repoConfigWrapper

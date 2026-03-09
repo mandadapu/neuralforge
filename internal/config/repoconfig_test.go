@@ -45,3 +45,10 @@ func TestParseRepoConfigDefaults(t *testing.T) {
 	assert.Equal(t, "neuralforge", cfg.Trigger.Label)
 	assert.Equal(t, 5.0, cfg.Limits.BudgetUSD)
 }
+
+func TestParseRepoConfigSizeLimit(t *testing.T) {
+	oversized := make([]byte, maxRepoConfigSize+1)
+	_, err := ParseRepoConfig(oversized)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds maximum allowed size")
+}
