@@ -78,12 +78,7 @@ func New(cfg config.Config) (*App, error) {
 	} else {
 		mux.Handle("/webhooks/github", NewWebhookHandler(cfg.GitHub.WebhookSecret, a.handleEvent))
 	}
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
-		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
-			slog.Error("failed to write health response", "error", err)
-		}
-	})
+	mux.HandleFunc("/health", healthHandler)
 
 	a.server = &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
@@ -165,6 +160,19 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 		slog.Info("job created", "job_id", jobID, "issue", e.Issue.Title)
 	default:
 		slog.Info("unhandled event type", "type", event.EventType())
+	}
+}
+
+// healthHandler handles GET /health with a minimal status response.
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+		slog.Error("failed to write health response", "error", err)
 	}
 }
 
