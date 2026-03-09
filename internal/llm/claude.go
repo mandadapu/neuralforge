@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -31,6 +32,8 @@ func (c *ClaudeBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 	if model == "" {
 		model = c.model
 	}
+
+	slog.Info("llm call", "backend", "claude", "agent", req.AgentName, "model", model)
 
 	maxTokens := int64(req.MaxTokens)
 	if maxTokens == 0 {

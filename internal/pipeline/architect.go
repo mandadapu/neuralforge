@@ -29,7 +29,8 @@ func (s *ArchitectStage) Run(ctx context.Context, state *PipelineState) (StageRe
 	)
 
 	resp, err := s.llm.Complete(ctx, llm.CompletionRequest{
-		System: "You are a software architect creating implementation plans.",
+		AgentName: "architect",
+		System:    "You are a software architect creating implementation plans.",
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: prompt},
 		},
