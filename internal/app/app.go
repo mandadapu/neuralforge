@@ -64,8 +64,6 @@ func New(cfg config.Config) (*App, error) {
 	handler := a.buildJobHandler()
 	a.pool = worker.NewPool(cfg.Workers, s, handler)
 
-	// NOTE: model names, API keys, and LLM configuration are never exposed via HTTP.
-	// Any future endpoint that returns model metadata MUST require authentication.
 	mux := http.NewServeMux()
 	if a.ghApp != nil {
 		mux.Handle("/webhooks/github", a.ghApp.WebhookMiddleware(
