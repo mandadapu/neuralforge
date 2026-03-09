@@ -3,6 +3,8 @@ package pipeline
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/mandadapu/neuralforge/internal/git"
 )
@@ -42,6 +44,20 @@ func (s *ComplianceStage) Run(_ context.Context, state *PipelineState) (StageRes
 	}
 
 	var violations []string
+
+	// Check for required LICENSE file.
+	licenseFiles := []string{"LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING"}
+	hasLicense := false
+	for _, name := range licenseFiles {
+		if _, err := os.Stat(filepath.Join(state.Repo.LocalPath, name)); err == nil {
+			hasLicense = true
+			break
+		}
+	}
+	if !hasLicense {
+		violations = append(violations, "missing LICENSE file: repository must include a LICENSE file")
+	}
+
 	if s.maxDiffLines > 0 && diffLines > s.maxDiffLines {
 		violations = append(violations, fmt.Sprintf(
 			"diff too large: %d lines exceeds limit of %d", diffLines, s.maxDiffLines,
