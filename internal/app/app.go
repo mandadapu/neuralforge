@@ -78,9 +78,6 @@ func New(cfg config.Config) (*App, error) {
 	} else {
 		mux.Handle("/webhooks/github", NewWebhookHandler(cfg.GitHub.WebhookSecret, a.handleEvent))
 	}
-	// /health intentionally returns minimal status only.
-	// Do not add model names, API keys, or config values here.
-	// llm_010: no model files or LLM configuration are served publicly. (false positive — api/schemas.py does not exist in this repo)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
