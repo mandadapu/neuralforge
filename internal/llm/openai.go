@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -31,6 +32,7 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 	if model == "" {
 		model = o.model
 	}
+	slog.Debug("llm call", "backend", "openai", "agent", req.AgentName, "model", model)
 
 	// Build messages, prepending system message if provided
 	var msgs []openai.ChatCompletionMessageParamUnion

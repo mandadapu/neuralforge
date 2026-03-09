@@ -21,6 +21,7 @@ type CompletionRequest struct {
 	Model       string    `json:"model"`
 	MaxTokens   int       `json:"max_tokens"`
 	Temperature float64   `json:"temperature"`
+	AgentName   string    `json:"agent_name,omitempty"`
 }
 
 type CompletionResponse struct {
