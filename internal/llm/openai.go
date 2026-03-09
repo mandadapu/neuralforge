@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -27,6 +28,10 @@ func (o *OpenAIBackend) Name() string {
 }
 
 func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
+	if req.AgentName != "" {
+		slog.InfoContext(ctx, "llm_call", "backend", "openai", "agent", req.AgentName, "model", req.Model)
+	}
+
 	model := req.Model
 	if model == "" {
 		model = o.model

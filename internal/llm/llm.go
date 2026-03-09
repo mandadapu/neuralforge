@@ -16,6 +16,7 @@ type Message struct {
 }
 
 type CompletionRequest struct {
+	AgentName   string    `json:"agent_name,omitempty"` // for audit attribution
 	System      string    `json:"system"`
 	Messages    []Message `json:"messages"`
 	Model       string    `json:"model"`

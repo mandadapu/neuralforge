@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -27,6 +28,10 @@ func (c *ClaudeBackend) Name() string {
 }
 
 func (c *ClaudeBackend) Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
+	if req.AgentName != "" {
+		slog.InfoContext(ctx, "llm_call", "backend", "claude", "agent", req.AgentName, "model", req.Model)
+	}
+
 	model := req.Model
 	if model == "" {
 		model = c.model
