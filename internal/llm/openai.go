@@ -48,13 +48,15 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 		}
 	}
 
-	params := openai.ChatCompletionNewParams{
-		Model:    model,
-		Messages: msgs,
+	maxTokens := int64(req.MaxTokens)
+	if maxTokens == 0 {
+		maxTokens = 4096
 	}
 
-	if req.MaxTokens > 0 {
-		params.MaxCompletionTokens = param.NewOpt(int64(req.MaxTokens))
+	params := openai.ChatCompletionNewParams{
+		Model:               model,
+		Messages:            msgs,
+		MaxCompletionTokens: param.NewOpt(maxTokens),
 	}
 
 	if req.Temperature > 0 {
