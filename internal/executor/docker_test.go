@@ -23,3 +23,28 @@ func TestDockerJobArgs(t *testing.T) {
 	assert.Contains(t, args, "ghcr.io/test:latest")
 	assert.Contains(t, args, "-w")
 }
+
+func TestValidateLocalPath(t *testing.T) {
+	tests := []struct {
+		name    string
+		path    string
+		wantErr bool
+	}{
+		{"valid absolute path", "/tmp/repo", false},
+		{"valid nested path", "/home/user/projects/myrepo", false},
+		{"relative path", "tmp/repo", true},
+		{"path with colon (docker injection)", "/tmp/repo:/etc", true},
+		{"path with traversal", "/tmp/../etc/passwd", true},
+		{"current dir", ".", true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			err := validateLocalPath(tc.path)
+			if tc.wantErr {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
