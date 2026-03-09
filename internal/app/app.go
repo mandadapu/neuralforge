@@ -68,7 +68,12 @@ func New(cfg config.Config) (*App, error) {
 	if a.ghApp != nil {
 		mux.Handle("/webhooks/github", a.ghApp.WebhookMiddleware(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				body, _ := io.ReadAll(r.Body)
+				r.Body = http.MaxBytesReader(w, r.Body, maxWebhookPayloadBytes)
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
+					return
+				}
 				eventType := r.Header.Get("X-GitHub-Event")
 				go a.handleEvent(eventType, body)
 				w.WriteHeader(http.StatusOK)
