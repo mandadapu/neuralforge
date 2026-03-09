@@ -1,6 +1,14 @@
 package config
 
-import "gopkg.in/yaml.v3"
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
+
+// maxRepoConfigBytes caps the size of repository config files to prevent
+// DoS via crafted YAML (GHSA-hp87-p4gw-j4gq).
+const maxRepoConfigBytes = 64 * 1024 // 64 KB
 
 type RepoConfig struct {
 	Trigger  TriggerConfig  `yaml:"trigger"`
@@ -64,6 +72,10 @@ func ParseRepoConfig(data []byte) (RepoConfig, error) {
 
 	if len(data) == 0 {
 		return cfg, nil
+	}
+
+	if len(data) > maxRepoConfigBytes {
+		return cfg, fmt.Errorf("repo config exceeds maximum size of %d bytes", maxRepoConfigBytes)
 	}
 
 	var wrapper repoConfigWrapper
