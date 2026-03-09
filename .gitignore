@@ -3,3 +3,4 @@ bin/
 *.pem
 .env
 vendor/
+frontend/node_modules/
