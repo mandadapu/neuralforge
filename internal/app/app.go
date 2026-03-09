@@ -173,11 +173,18 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 func (a *App) buildJobHandler() worker.JobHandler {
 	// Create LLM backend based on config.
 	var backend llm.LLM
+	var llmErr error
 	switch a.cfg.LLM.DefaultProvider {
 	case "openai":
-		backend = llm.NewOpenAI(a.cfg.LLM.OpenAI.APIKey, a.cfg.LLM.OpenAI.Model)
+		backend, llmErr = llm.NewOpenAI(a.cfg.LLM.OpenAI.APIKey, a.cfg.LLM.OpenAI.Model)
 	default:
-		backend = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
+		backend, llmErr = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
+	}
+	if llmErr != nil {
+		slog.Error("failed to create LLM backend", "error", llmErr)
+		return func(ctx context.Context, job store.Job) error {
+			return fmt.Errorf("LLM backend unavailable: %w", llmErr)
+		}
 	}
 
 	// Create executor based on config.

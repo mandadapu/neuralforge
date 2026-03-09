@@ -14,12 +14,12 @@ type ClaudeBackend struct {
 	model  string
 }
 
-func NewClaude(apiKey, model string) *ClaudeBackend {
-	client := anthropic.NewClient(option.WithAPIKey(apiKey))
-	return &ClaudeBackend{
-		client: client,
-		model:  model,
+func NewClaude(apiKey, model string) (*ClaudeBackend, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("claude: API key must not be empty")
 	}
+	client := anthropic.NewClient(option.WithAPIKey(apiKey))
+	return &ClaudeBackend{client: client, model: model}, nil
 }
 
 func (c *ClaudeBackend) Name() string {

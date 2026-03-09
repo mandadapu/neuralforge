@@ -14,12 +14,12 @@ type OpenAIBackend struct {
 	model  string
 }
 
-func NewOpenAI(apiKey, model string) *OpenAIBackend {
-	client := openai.NewClient(option.WithAPIKey(apiKey))
-	return &OpenAIBackend{
-		client: client,
-		model:  model,
+func NewOpenAI(apiKey, model string) (*OpenAIBackend, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("openai: API key must not be empty")
 	}
+	client := openai.NewClient(option.WithAPIKey(apiKey))
+	return &OpenAIBackend{client: client, model: model}, nil
 }
 
 func (o *OpenAIBackend) Name() string {
