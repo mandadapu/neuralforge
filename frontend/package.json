@@ -1,0 +1,10 @@
+{
+  "name": "neuralforge-frontend",
+  "version": "1.0.0",
+  "dependencies": {
+    "minimatch": "^9.0.6"
+  },
+  "overrides": {
+    "minimatch": "^9.0.6"
+  }
+}
