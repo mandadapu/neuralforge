@@ -53,9 +53,11 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 		Messages: msgs,
 	}
 
-	if req.MaxTokens > 0 {
-		params.MaxCompletionTokens = param.NewOpt(int64(req.MaxTokens))
+	maxTokens := int64(req.MaxTokens)
+	if maxTokens == 0 {
+		maxTokens = 4096
 	}
+	params.MaxCompletionTokens = param.NewOpt(maxTokens)
 
 	if req.Temperature > 0 {
 		params.Temperature = param.NewOpt(req.Temperature)
