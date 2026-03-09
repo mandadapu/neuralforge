@@ -1,6 +1,14 @@
 package config
 
-import "gopkg.in/yaml.v3"
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
+
+// maxRepoConfigSize limits YAML input to prevent denial-of-service via
+// maliciously crafted YAML documents (GHSA-hp87-p4gw-j4gq).
+const maxRepoConfigSize = 1 << 20 // 1 MiB
 
 type RepoConfig struct {
 	Trigger  TriggerConfig  `yaml:"trigger"`
@@ -64,6 +72,10 @@ func ParseRepoConfig(data []byte) (RepoConfig, error) {
 
 	if len(data) == 0 {
 		return cfg, nil
+	}
+
+	if len(data) > maxRepoConfigSize {
+		return cfg, fmt.Errorf("config: input exceeds maximum size of %d bytes", maxRepoConfigSize)
 	}
 
 	var wrapper repoConfigWrapper

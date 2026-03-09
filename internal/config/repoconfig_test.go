@@ -38,6 +38,12 @@ neuralforge:
 	assert.InDelta(t, 5.0, cfg.Limits.BudgetUSD, 0.01)
 }
 
+func TestParseRepoConfigOversized(t *testing.T) {
+	oversized := make([]byte, maxRepoConfigSize+1)
+	_, err := ParseRepoConfig(oversized)
+	assert.ErrorContains(t, err, "exceeds maximum size")
+}
+
 func TestParseRepoConfigDefaults(t *testing.T) {
 	cfg, err := ParseRepoConfig([]byte(""))
 	require.NoError(t, err)
