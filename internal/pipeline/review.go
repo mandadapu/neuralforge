@@ -53,6 +53,8 @@ func (s *ReviewStage) Run(ctx context.Context, state *PipelineState) (StageResul
 	)
 
 	resp, err := s.llm.Complete(ctx, llm.CompletionRequest{
+		// SECURITY: static trusted system prompt — no untrusted data interpolated here.
+		// Untrusted content (issue title, diffs, test output) is passed in the user message only.
 		System: "You are a code reviewer. Start your response with APPROVE or REQUEST_CHANGES.",
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: prompt},

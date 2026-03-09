@@ -36,6 +36,8 @@ func (s *SecurityStage) Run(ctx context.Context, state *PipelineState) (StageRes
 	)
 
 	resp, err := s.llm.Complete(ctx, llm.CompletionRequest{
+		// SECURITY: static trusted system prompt — no untrusted data interpolated here.
+		// Untrusted content (plan text, repo name) is passed in the user message only.
 		System: "You are a security reviewer analyzing implementation plans for vulnerabilities.",
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: prompt},
