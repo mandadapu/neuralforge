@@ -14,12 +14,19 @@ type OpenAIBackend struct {
 	model  string
 }
 
-func NewOpenAI(apiKey, model string) *OpenAIBackend {
+// newOpenAIBackend constructs the raw backend without auditing.
+// Use NewOpenAI to get an audited instance.
+func newOpenAIBackend(apiKey, model string) *OpenAIBackend {
 	client := openai.NewClient(option.WithAPIKey(apiKey))
 	return &OpenAIBackend{
 		client: client,
 		model:  model,
 	}
+}
+
+// NewOpenAI returns an audited LLM backed by OpenAI.
+func NewOpenAI(apiKey, model string) LLM {
+	return NewAudited(newOpenAIBackend(apiKey, model))
 }
 
 func (o *OpenAIBackend) Name() string {
