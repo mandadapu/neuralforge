@@ -14,12 +14,9 @@ type ClaudeBackend struct {
 	model  string
 }
 
-func NewClaude(apiKey, model string) *ClaudeBackend {
+func NewClaude(apiKey, model string) LLM {
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
-	return &ClaudeBackend{
-		client: client,
-		model:  model,
-	}
+	return NewAudited(&ClaudeBackend{client: client, model: model})
 }
 
 func (c *ClaudeBackend) Name() string {
