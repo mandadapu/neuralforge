@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -44,4 +45,13 @@ func TestParseRepoConfigDefaults(t *testing.T) {
 
 	assert.Equal(t, "neuralforge", cfg.Trigger.Label)
 	assert.Equal(t, 5.0, cfg.Limits.BudgetUSD)
+}
+
+// TestParseRepoConfigOversized guards against GHSA-hp87-p4gw-j4gq (CVE-2022-28948):
+// inputs exceeding maxRepoConfigSize must be rejected before YAML decoding.
+func TestParseRepoConfigOversized(t *testing.T) {
+	oversized := strings.Repeat("x", maxRepoConfigSize+1)
+	_, err := ParseRepoConfig([]byte(oversized))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds maximum allowed size")
 }
