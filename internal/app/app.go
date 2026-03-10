@@ -61,7 +61,11 @@ func New(cfg config.Config) (*App, error) {
 		a.ghApp = ghApp
 	}
 
-	handler := a.buildJobHandler()
+	handler, err := a.buildJobHandler()
+	if err != nil {
+		s.Close()
+		return nil, fmt.Errorf("build job handler: %w", err)
+	}
 	a.pool = worker.NewPool(cfg.Workers, s, handler)
 
 	mux := http.NewServeMux()
@@ -170,14 +174,17 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 
 // buildJobHandler creates the LLM backend and executor, then returns a handler
 // that clones the repo, builds pipeline state, and runs the pipeline engine.
-func (a *App) buildJobHandler() worker.JobHandler {
+func (a *App) buildJobHandler() (worker.JobHandler, error) {
 	// Create LLM backend based on config.
-	var backend llm.LLM
-	switch a.cfg.LLM.DefaultProvider {
-	case "openai":
-		backend = llm.NewOpenAI(a.cfg.LLM.OpenAI.APIKey, a.cfg.LLM.OpenAI.Model)
-	default:
-		backend = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
+	apiKey := a.cfg.LLM.Claude.APIKey
+	model := a.cfg.LLM.Claude.Model
+	if a.cfg.LLM.DefaultProvider == "openai" {
+		apiKey = a.cfg.LLM.OpenAI.APIKey
+		model = a.cfg.LLM.OpenAI.Model
+	}
+	backend, err := llm.New(a.cfg.LLM.DefaultProvider, apiKey, model)
+	if err != nil {
+		return nil, fmt.Errorf("create llm backend: %w", err)
 	}
 
 	// Create executor based on config.
@@ -305,5 +312,5 @@ func (a *App) buildJobHandler() worker.JobHandler {
 
 		slog.Info("job completed", "job_id", job.ID, "cost", state.Cost)
 		return nil
-	}
+	}, nil
 }
