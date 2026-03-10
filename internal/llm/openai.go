@@ -14,12 +14,13 @@ type OpenAIBackend struct {
 	model  string
 }
 
-func NewOpenAI(apiKey, model string) *OpenAIBackend {
+func NewOpenAI(apiKey, model string) LLM {
 	client := openai.NewClient(option.WithAPIKey(apiKey))
-	return &OpenAIBackend{
+	backend := &OpenAIBackend{
 		client: client,
 		model:  model,
 	}
+	return NewAuditedLLM(backend)
 }
 
 func (o *OpenAIBackend) Name() string {
