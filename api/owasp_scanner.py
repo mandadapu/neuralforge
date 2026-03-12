@@ -1,8 +1,8 @@
 """OWASP vulnerability scanner API."""
 
 import os
-import re
 import logging
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 
 from flask import Flask, request
@@ -11,14 +11,20 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
-_ORIGIN_RE = re.compile(r'^https?://[^/*]+$')
-
 
 def _validate_origin(origin: str) -> bool:
-    """Return True if *origin* is a well-formed http/https URL with no wildcards."""
+    """Return True if origin is a well-formed http/https URL with no wildcards."""
+    if not origin or "*" in origin:
+        return False
     try:
         parsed = urlparse(origin)
-        return bool(_ORIGIN_RE.match(origin) and parsed.scheme in ("http", "https") and parsed.netloc)
+        return (
+            parsed.scheme in ("http", "https")
+            and bool(parsed.netloc)
+            and not parsed.path.strip("/")
+            and not parsed.query
+            and not parsed.fragment
+        )
     except Exception:
         return False
 
@@ -33,18 +39,38 @@ def _get_allowed_origins():
             if _validate_origin(o):
                 validated.append(o)
             else:
-                logger.warning("ALLOWED_ORIGINS: skipping invalid entry %r", o)
+                logger.warning(
+                    "CORS startup validation: ALLOWED_ORIGINS entry %r is invalid and will be skipped",
+                    o,
+                )
     return validated
+
+
+# ---------------------------------------------------------------------------
+# Startup validation — fail fast if ALLOWED_ORIGINS is missing or all invalid.
+# ---------------------------------------------------------------------------
+_startup_origins = _get_allowed_origins()
+if not _startup_origins:
+    logger.error(
+        "CORS startup validation FAILED: ALLOWED_ORIGINS is unset or contains no valid entries. "
+        "All cross-origin requests will be denied. "
+        "Set ALLOWED_ORIGINS to a comma-separated list of trusted origins "
+        "(e.g. ALLOWED_ORIGINS=https://app.example.com,https://staging.example.com)."
+    )
 
 
 def _build_cors_response(response, request_origin: str):
     """Set CORS response headers for trusted origins only."""
     allowed = _get_allowed_origins()
+    ts = datetime.now(timezone.utc).isoformat()
+    request_id = request.headers.get("X-Request-Id", "-")
+    method = request.method
+    path = request.path
 
     if not allowed:
         logger.warning(
-            "ALLOWED_ORIGINS is not set. All cross-origin requests will be denied. "
-            "Set ALLOWED_ORIGINS to a comma-separated list of trusted origins."
+            "CORS audit ts=%s request_id=%s method=%s path=%s origin=%r decision=denied reason=no_allowed_origins",
+            ts, request_id, method, path, request_origin or "(none)",
         )
         return response
 
@@ -55,9 +81,15 @@ def _build_cors_response(response, request_origin: str):
         # line 113 — Access-Control-Allow-Credentials
         # Only valid when a specific (non-wildcard) origin is set.
         response.headers["Access-Control-Allow-Credentials"] = "true"
-        logger.info("CORS: permitted origin=%r", request_origin)
+        logger.info(
+            "CORS audit ts=%s request_id=%s method=%s path=%s origin=%r decision=allowed",
+            ts, request_id, method, path, request_origin,
+        )
     else:
-        logger.info("CORS: denied origin=%r (not in trusted list)", request_origin or "(none)")
+        logger.warning(
+            "CORS audit ts=%s request_id=%s method=%s path=%s origin=%r decision=denied reason=origin_not_trusted",
+            ts, request_id, method, path, request_origin or "(none)",
+        )
 
     return response
 
