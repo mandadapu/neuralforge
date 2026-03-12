@@ -102,3 +102,72 @@ func TestAuditedLLM_NilLogger(t *testing.T) {
 	_, err := audited.Complete(context.Background(), CompletionRequest{})
 	assert.NoError(t, err)
 }
+
+func TestAuditedLLM_StreamComplete(t *testing.T) {
+	t.Run("success logs start and done", func(t *testing.T) {
+		var buf bytes.Buffer
+		logger := newTestLogger(&buf)
+		mock := &mockLLM{name: "streamprovider"}
+		audited := NewAuditedLLM(mock, logger)
+
+		ch, err := audited.StreamComplete(context.Background(), CompletionRequest{Model: "gpt-4"})
+		require.NoError(t, err)
+		// Drain the channel (mock closes it immediately with Done chunk).
+		for range ch {
+		}
+
+		logOutput := buf.String()
+		for _, key := range []string{"llm.stream.start", "llm.stream.done", "provider", "model", "duration_ms"} {
+			assert.True(t, strings.Contains(logOutput, key), "expected log key %q in output: %s", key, logOutput)
+		}
+	})
+
+	t.Run("init error logs stream.error", func(t *testing.T) {
+		var buf bytes.Buffer
+		logger := newTestLogger(&buf)
+		mock := &mockLLM{name: "streamprovider", err: errors.New("dial tcp: connection refused")}
+		audited := NewAuditedLLM(mock, logger)
+
+		_, err := audited.StreamComplete(context.Background(), CompletionRequest{Model: "gpt-4"})
+		require.Error(t, err)
+
+		logOutput := buf.String()
+		for _, key := range []string{"llm.stream.start", "llm.stream.error", "duration_ms"} {
+			assert.True(t, strings.Contains(logOutput, key), "expected log key %q in output: %s", key, logOutput)
+		}
+		// Full error message should be truncated / sanitized, not absent entirely.
+		assert.True(t, strings.Contains(logOutput, "error"), "expected error key in output")
+	})
+}
+
+func TestSanitizeError(t *testing.T) {
+	assert.Equal(t, "", sanitizeError(nil))
+
+	short := errors.New("short error")
+	out := sanitizeError(short)
+	assert.True(t, strings.Contains(out, "short error"))
+
+	// Build an error whose message exceeds maxErrLen.
+	longMsg := strings.Repeat("x", maxErrLen+50)
+	long := errors.New(longMsg)
+	out = sanitizeError(long)
+	assert.LessOrEqual(t, len(out), maxErrLen+10, "sanitized error should be truncated")
+	assert.True(t, strings.HasSuffix(out, "…"), "truncated error should end with ellipsis")
+}
+
+func TestAuditedLLM_ErrorSanitized(t *testing.T) {
+	// Verify that sensitive data in an error is truncated in logs but full error
+	// is returned to the caller.
+	var buf bytes.Buffer
+	logger := newTestLogger(&buf)
+	sensitiveErr := errors.New("api_key=sk-secret123 token=eyJhb user_id=42 " + strings.Repeat("sensitive", 20))
+	mock := &mockLLM{name: "prov", err: sensitiveErr}
+	audited := NewAuditedLLM(mock, logger)
+
+	_, err := audited.Complete(context.Background(), CompletionRequest{})
+	require.ErrorIs(t, err, sensitiveErr) // full error returned to caller
+
+	logOutput := buf.String()
+	// Log line should not contain the full repeated "sensitive" blob.
+	assert.False(t, strings.Contains(logOutput, strings.Repeat("sensitive", 20)), "full sensitive error must not appear in logs")
+}
