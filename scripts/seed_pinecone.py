@@ -10,9 +10,14 @@ Compliance notes:
   data is still considered personal-data processing under GDPR Art. 4(1).
   Ensure an appropriate legal basis exists and that log destinations are
   access-controlled before processing corpora that may contain PII/PHI.
-- Use of --allow-unsafe is recorded in a structured audit log entry. Operators
-  must supply a written justification via --unsafe-reason; the entry includes
-  the invoking OS user, timestamp, index name, and justification.
+- Use of --allow-unsafe is recorded in a structured JSON audit log entry written
+  to a dedicated append-only file (--audit-log, default: seed_pinecone_audit.log).
+  The audit record is written to the file BEFORE processing begins and cannot be
+  suppressed by log-level configuration. Operators must supply a written
+  justification via --unsafe-reason; the entry includes the invoking OS user,
+  timestamp, index name, and justification. This file must be stored on
+  access-controlled, tamper-evident storage and reviewed by an administrator.
+  Failure to write the audit record aborts the run.
 - PII/PHI pattern detection runs before every upsert and cannot be bypassed,
   even with --allow-unsafe. Chunks flagged as containing sensitive data are
   always rejected.
@@ -209,7 +214,8 @@ def _build_parser() -> argparse.ArgumentParser:
         help=(
             "Skip injection-pattern checks for trusted corpora "
             "(e.g. AI-safety research papers that quote injection examples). "
-            "Requires --unsafe-reason. PII/PHI checks are never bypassed."
+            "Requires --unsafe-reason and administrator pre-approval. "
+            "PII/PHI checks are never bypassed."
         ),
     )
     parser.add_argument(
@@ -221,7 +227,41 @@ def _build_parser() -> argparse.ArgumentParser:
             "Written to the audit log alongside operator identity and timestamp."
         ),
     )
+    parser.add_argument(
+        "--audit-log",
+        default="seed_pinecone_audit.log",
+        metavar="PATH",
+        help=(
+            "Path to the append-only audit log file. "
+            "Defaults to seed_pinecone_audit.log in the current directory. "
+            "This file must be stored on access-controlled, tamper-evident storage "
+            "to satisfy GDPR/HIPAA audit-trail requirements."
+        ),
+    )
     return parser
+
+
+def _write_audit_record(audit_log_path: str, record: dict) -> None:
+    """Append a JSON audit record to the dedicated audit log file.
+
+    The audit log is separate from application logs so it cannot be suppressed
+    by log-level configuration and provides a durable, tamper-evident trail.
+    Access to this file must be restricted to authorised administrators.
+    """
+    import json as _json
+
+    try:
+        with open(audit_log_path, "a", encoding="utf-8") as af:
+            af.write(_json.dumps(record) + "\n")
+            af.flush()
+    except OSError as exc:
+        # Failing to write the audit record is a hard error — do not proceed
+        # without a durable audit trail when --allow-unsafe is in use.
+        raise RuntimeError(
+            f"Cannot write to audit log '{audit_log_path}': {exc}. "
+            "Ensure the path is writable and that the directory is "
+            "access-controlled before using --allow-unsafe."
+        ) from exc
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -253,8 +293,6 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         skip_injection_check = True
-        # Structured audit record — written at WARNING so it is captured in all
-        # standard log configurations and not suppressible below INFO.
         audit_entry = {
             "event": "allow_unsafe_bypass",
             "operator": getpass.getuser(),
@@ -263,9 +301,21 @@ def main(argv: list[str] | None = None) -> int:
             "namespace": args.namespace or "(default)",
             "input_file": args.input,
             "reason": args.unsafe_reason.strip(),
-            "note": "injection-pattern checks disabled; PII/PHI checks remain active",
+            "note": (
+                "injection-pattern checks disabled; PII/PHI checks remain active. "
+                "This action requires prior administrator approval and must be "
+                "reviewed in the access-controlled audit log."
+            ),
         }
-        logger.warning("AUDIT: %s", audit_entry)
+        # Write to the durable, dedicated audit file first — this is the
+        # authoritative record and cannot be suppressed by log configuration.
+        try:
+            _write_audit_record(args.audit_log, audit_entry)
+        except RuntimeError as exc:
+            logger.error("%s", exc)
+            return 1
+        # Also emit to application log at WARNING for operational visibility.
+        logger.warning("AUDIT (see %s for durable record): %s", args.audit_log, audit_entry)
 
     chunks: list[dict] = []
     try:
