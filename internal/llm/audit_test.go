@@ -183,7 +183,7 @@ func TestAuditedLLM_StreamComplete_LogsStartAndCompletion(t *testing.T) {
 	audited := NewAudited(mock)
 
 	ctx := WithActor(context.Background(), "stream-user")
-	ch, err := audited.StreamComplete(ctx, CompletionRequest{System: "s"})
+	ch, err := audited.StreamComplete(ctx, CompletionRequest{System: "s", Model: "test-stream-model"})
 	require.NoError(t, err)
 
 	// drain channel
@@ -197,6 +197,7 @@ func TestAuditedLLM_StreamComplete_LogsStartAndCompletion(t *testing.T) {
 
 	startAttrs := h.attrMap(0)
 	assert.Equal(t, "mock-provider", startAttrs["provider"])
+	assert.Equal(t, "test-stream-model", startAttrs["model"])
 	assert.Equal(t, "stream-user", startAttrs["actor"])
 	assert.NotEmpty(t, startAttrs["prompt_hash"])
 
@@ -205,6 +206,7 @@ func TestAuditedLLM_StreamComplete_LogsStartAndCompletion(t *testing.T) {
 
 	doneAttrs := h.attrMap(1)
 	assert.Equal(t, "mock-provider", doneAttrs["provider"])
+	assert.Equal(t, "test-stream-model", doneAttrs["model"])
 	assert.NotNil(t, doneAttrs["chunks"])
 	assert.NotNil(t, doneAttrs["latency_ms"])
 }

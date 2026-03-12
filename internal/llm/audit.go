@@ -82,6 +82,7 @@ func (a *AuditedLLM) StreamComplete(ctx context.Context, req CompletionRequest) 
 
 	slog.Info("llm audit: StreamComplete started",
 		"provider", a.inner.Name(),
+		"model", req.Model,
 		"actor", actor,
 		"prompt_hash", pHash,
 	)
@@ -90,6 +91,7 @@ func (a *AuditedLLM) StreamComplete(ctx context.Context, req CompletionRequest) 
 	if err != nil {
 		slog.Error("llm audit: StreamComplete failed",
 			"provider", a.inner.Name(),
+			"model", req.Model,
 			"actor", actor,
 			"prompt_hash", pHash,
 			"latency_ms", time.Since(start).Milliseconds(),
@@ -115,6 +117,7 @@ func (a *AuditedLLM) StreamComplete(ctx context.Context, req CompletionRequest) 
 		}
 		attrs := []any{
 			"provider", a.inner.Name(),
+			"model", req.Model,
 			"actor", actor,
 			"prompt_hash", pHash,
 			"chunks", chunkCount,
