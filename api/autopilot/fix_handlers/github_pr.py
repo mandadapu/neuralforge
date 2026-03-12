@@ -7,22 +7,85 @@ the fix applied.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import os
 import re
-import textwrap
 import time
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Callable
 
 import anthropic
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_TOKENS = 4096
+
+# Severities that require human approval before automated PR creation (SOX control)
+_HIGH_CRITICAL_SEVERITIES = {"CRITICAL", "HIGH"}
+
+# ---------------------------------------------------------------------------
+# Sensitive data redaction (GDPR Art. 25, HIPAA, PCI-DSS Req. 3.4)
+# ---------------------------------------------------------------------------
+
+_SENSITIVE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    # PAN — 13-19 digit card numbers (PCI-DSS)
+    (re.compile(r"\b(?:\d[ -]?){12,18}\d\b"), "[REDACTED-PAN]"),
+    # US SSN (HIPAA Safe Harbor)
+    (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[REDACTED-SSN]"),
+    # Email addresses (GDPR personal data)
+    (re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"), "[REDACTED-EMAIL]"),
+    # PEM private keys
+    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.DOTALL), "[REDACTED-PRIVATE-KEY]"),
+    # Bearer / API tokens on assignment lines (e.g. token = "sk-...")
+    (re.compile(r'(?i)(token|api_?key|secret|password|passwd|credential)\s*[=:]\s*["\']?[A-Za-z0-9_\-./+]{20,}["\']?'), r"\1=[REDACTED-SECRET]"),
+    # JWT tokens
+    (re.compile(r"eyJ[A-Za-z0-9_\-]+\.eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+"), "[REDACTED-JWT]"),
+]
+
+
+def _redact_sensitive_data(text: str) -> str:
+    """Redact PII, PHI, PAN, and secrets from text before external LLM transmission."""
+    for pattern, replacement in _SENSITIVE_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _sanitize_finding_for_llm(finding: dict) -> dict:
+    """Return a copy of the finding with sensitive fields redacted."""
+    safe = {}
+    for key, value in finding.items():
+        if isinstance(value, str):
+            safe[key] = _redact_sensitive_data(value)
+        elif isinstance(value, (dict, list)):
+            # Serialize → redact → re-parse to catch nested values
+            serialized = json.dumps(value)
+            safe[key] = json.loads(_redact_sensitive_data(serialized))
+        else:
+            safe[key] = value
+    return safe
+
+
+# ---------------------------------------------------------------------------
+# Audit logging (Audit Trail Integrity — all frameworks)
+# ---------------------------------------------------------------------------
+
+def _emit_audit_event(event_type: str, **fields: Any) -> None:
+    """Emit a structured audit event for compliance trail.
+
+    All external LLM transmissions and human approval decisions must be
+    recorded here. These records must be forwarded to an immutable audit
+    store (e.g. append-only S3 bucket, SIEM) by the log pipeline.
+    """
+    event = {
+        "audit_event": event_type,
+        "timestamp": time.time(),
+        **fields,
+    }
+    # Log at WARNING level so the event is emitted regardless of application
+    # log level and is captured by log aggregation systems.
+    logger.warning("AUDIT %s", json.dumps(event))
 
 # ---------------------------------------------------------------------------
 # Enumerations and constants
@@ -225,21 +288,30 @@ def _branch_name_for_finding(finding_id: str, severity: str) -> str:
 
 
 def _build_fix_prompt(ctx: FixContext) -> str:
-    """Build the user prompt for fix generation."""
+    """Build the user prompt for fix generation.
+
+    All code content is redacted of sensitive data (PII/PHI/PAN/secrets)
+    before transmission to the external LLM provider (GDPR Art. 25,
+    HIPAA, PCI-DSS Req. 3.4).
+    """
+    # Data minimization: redact sensitive patterns from file content
+    safe_file_content = _redact_sensitive_data(ctx.file_content)
+    safe_finding = _sanitize_finding_for_llm(ctx.finding)
+
     related = ""
     if ctx.related_files:
         parts = [
-            f"Related file: {path}\n```{ctx.language}\n{content[:2000]}\n```"
+            f"Related file: {path}\n```{ctx.language}\n{_redact_sensitive_data(content[:2000])}\n```"
             for path, content in ctx.related_files.items()
         ]
         related = "\n\n".join(parts) + "\n\n"
 
     return (
-        f"Finding:\n{json.dumps(ctx.finding, indent=2)}\n\n"
+        f"Finding:\n{json.dumps(safe_finding, indent=2)}\n\n"
         f"File to fix: {ctx.file_path}\n"
         f"Language: {ctx.language}\n\n"
         f"{related}"
-        f"File content:\n```{ctx.language}\n{ctx.file_content}\n```"
+        f"File content:\n```{ctx.language}\n{safe_file_content}\n```"
     )
 
 
@@ -285,14 +357,34 @@ class GitHubPRFixHandler:
         api_key: str | None = None,
         enable_review: bool = True,
         dry_run: bool = False,
+        human_approval_callback: Callable[[str, dict], bool] | None = None,
+        require_human_approval_for_high_critical: bool = True,
     ):
-        self.github_token = github_token or os.environ.get("GITHUB_TOKEN", "")
+        resolved_api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        resolved_github_token = github_token or os.environ.get("GITHUB_TOKEN", "")
+
+        # GDPR Art. 32: Validate that secrets are present; keys must be rotated
+        # per the organisation's secrets management policy. Do NOT hardcode keys.
+        if not resolved_api_key:
+            logger.warning(
+                "ANTHROPIC_API_KEY is not set. LLM calls will fail. "
+                "Ensure API keys are managed via a secrets manager with rotation policy."
+            )
+        if not resolved_github_token:
+            logger.warning(
+                "GITHUB_TOKEN is not set. GitHub API calls will fail. "
+                "Ensure tokens are managed via a secrets manager with rotation policy."
+            )
+
+        self.github_token = resolved_github_token
         self.model = model
         self.enable_review = enable_review
         self.dry_run = dry_run
-        self._client = anthropic.Anthropic(
-            api_key=api_key or os.environ.get("ANTHROPIC_API_KEY", "")
-        )
+        # SOX Section 404: callback invoked for HIGH/CRITICAL findings to obtain
+        # out-of-band human approval before PR creation. Must return True to proceed.
+        self.human_approval_callback = human_approval_callback
+        self.require_human_approval_for_high_critical = require_human_approval_for_high_critical
+        self._client = anthropic.Anthropic(api_key=resolved_api_key)
 
     # ------------------------------------------------------------------
     # Step 1: Generate fix
@@ -311,6 +403,16 @@ class GitHubPRFixHandler:
         logger.info(
             "GitHubPRFixHandler.generate_fix finding_id=%s file=%s",
             ctx.finding_id, ctx.file_path,
+        )
+        # Audit: record external LLM transmission (GDPR Art. 25, HIPAA)
+        _emit_audit_event(
+            "llm_transmission",
+            operation="generate_fix",
+            finding_id=ctx.finding_id,
+            severity=ctx.severity,
+            file_path=ctx.file_path,
+            model=self.model,
+            data_minimization_applied=True,
         )
 
         response = self._client.messages.create(
@@ -466,6 +568,53 @@ class GitHubPRFixHandler:
         Returns:
             PRResult indicating success or failure.
         """
+        # SOX Section 404: HIGH/CRITICAL severity findings require human approval
+        # before automated PR creation to enforce segregation of duties.
+        if (
+            self.require_human_approval_for_high_critical
+            and ctx.severity.upper() in _HIGH_CRITICAL_SEVERITIES
+        ):
+            if self.human_approval_callback is None:
+                _emit_audit_event(
+                    "human_approval_required",
+                    finding_id=ctx.finding_id,
+                    severity=ctx.severity,
+                    outcome="blocked_no_callback",
+                )
+                logger.warning(
+                    "GitHubPRFixHandler.handle: %s finding requires human approval "
+                    "but no human_approval_callback is configured. finding_id=%s",
+                    ctx.severity, ctx.finding_id,
+                )
+                return PRResult(
+                    pr_url=None,
+                    pr_number=None,
+                    status=PRStatus.FAILED,
+                    error=(
+                        f"Human approval required for {ctx.severity} severity finding "
+                        f"(SOX segregation-of-duties control). "
+                        f"Provide a human_approval_callback to GitHubPRFixHandler."
+                    ),
+                )
+            approved_by_human = self.human_approval_callback(ctx.finding_id, ctx.finding)
+            _emit_audit_event(
+                "human_approval_decision",
+                finding_id=ctx.finding_id,
+                severity=ctx.severity,
+                approved=approved_by_human,
+            )
+            if not approved_by_human:
+                logger.warning(
+                    "GitHubPRFixHandler.handle: human approval denied finding_id=%s",
+                    ctx.finding_id,
+                )
+                return PRResult(
+                    pr_url=None,
+                    pr_number=None,
+                    status=PRStatus.FAILED,
+                    error="Human approval denied",
+                )
+
         try:
             fix = self.generate_fix(ctx)
         except Exception as exc:  # noqa: BLE001
@@ -483,7 +632,15 @@ class GitHubPRFixHandler:
         review_result = None
         if self.enable_review:
             review_result = self.review_fix(ctx, fix)
-            if not review_result.get("approved", False):
+            approved = review_result.get("approved", False)
+            _emit_audit_event(
+                "llm_review_decision",
+                finding_id=ctx.finding_id,
+                severity=ctx.severity,
+                approved=approved,
+                issues=review_result.get("issues"),
+            )
+            if not approved:
                 logger.warning(
                     "GitHubPRFixHandler.handle: review rejected finding_id=%s issues=%s",
                     ctx.finding_id, review_result.get("issues"),
@@ -498,7 +655,7 @@ class GitHubPRFixHandler:
 
         title, body = self.generate_pr_metadata(ctx, fix)
         branch = _branch_name_for_finding(ctx.finding_id, ctx.severity)
-        spec = PRSpec(
+        PRSpec(
             title=title,
             body=body,
             base_branch=ctx.base_branch,
@@ -525,6 +682,14 @@ class GitHubPRFixHandler:
         logger.info(
             "GitHubPRFixHandler.handle: would create PR branch=%s title=%r",
             branch, title,
+        )
+        _emit_audit_event(
+            "pr_created",
+            finding_id=ctx.finding_id,
+            severity=ctx.severity,
+            repo=ctx.repo_name,
+            branch=branch,
+            title=title,
         )
         return PRResult(
             pr_url=f"https://github.com/{ctx.repo_name}/pull/0",

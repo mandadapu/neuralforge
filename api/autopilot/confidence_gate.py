@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -21,6 +22,63 @@ import anthropic
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_TOKENS = 2048
+
+# Severities that must never auto-proceed without human review (SOX control)
+_HUMAN_REVIEW_REQUIRED_SEVERITIES = {"CRITICAL", "HIGH"}
+
+# Fields allowed in finding data sent to external LLM (data minimization, GDPR Art. 25)
+_FINDING_ALLOWED_FIELDS = {
+    "id", "severity", "title", "description", "cwe", "rule_id",
+    "category", "confidence", "file", "line", "column",
+}
+
+# Sensitive value patterns redacted before LLM transmission (GDPR/HIPAA/PCI-DSS)
+_SENSITIVE_PATTERNS: list[tuple[re.Pattern, str]] = [
+    (re.compile(r"\b(?:\d[ -]?){12,18}\d\b"), "[REDACTED-PAN]"),
+    (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[REDACTED-SSN]"),
+    (re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}"), "[REDACTED-EMAIL]"),
+    (re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----", re.DOTALL), "[REDACTED-PRIVATE-KEY]"),
+    (re.compile(r'(?i)(token|api_?key|secret|password|passwd)\s*[=:]\s*["\']?[A-Za-z0-9_\-./+]{20,}["\']?'), r"\1=[REDACTED-SECRET]"),
+]
+
+
+def _redact_sensitive_data(text: str) -> str:
+    """Redact PII/PHI/PAN/secrets from text before external LLM transmission."""
+    for pattern, replacement in _SENSITIVE_PATTERNS:
+        text = pattern.sub(replacement, text)
+    return text
+
+
+def _minimize_finding_for_llm(finding: dict) -> dict:
+    """Return a data-minimized copy of the finding for LLM transmission.
+
+    Only allowed fields are forwarded (GDPR Art. 25 data minimization).
+    Remaining string values are redacted of sensitive patterns.
+    """
+    minimized: dict = {}
+    for key in _FINDING_ALLOWED_FIELDS:
+        if key in finding:
+            value = finding[key]
+            if isinstance(value, str):
+                minimized[key] = _redact_sensitive_data(value)
+            else:
+                minimized[key] = value
+    return minimized
+
+
+def _emit_audit_event(event_type: str, **fields: Any) -> None:
+    """Emit a structured audit event for compliance trail.
+
+    All external LLM transmissions and gate decisions must be recorded here.
+    These log records must be forwarded to an immutable audit store (GDPR Art. 32,
+    SOX Section 404, HIPAA audit controls).
+    """
+    event = {
+        "audit_event": event_type,
+        "timestamp": time.time(),
+        **fields,
+    }
+    logger.warning("AUDIT %s", json.dumps(event))
 
 # ---------------------------------------------------------------------------
 # Enumerations and constants
@@ -221,9 +279,14 @@ class ConfidenceGate:
         api_key: str | None = None,
     ):
         self.config = config or GateConfig()
-        self._client = anthropic.Anthropic(
-            api_key=api_key or os.environ.get("ANTHROPIC_API_KEY", "")
-        )
+        resolved_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
+        # GDPR Art. 32: Validate key presence; rotation must be managed externally.
+        if not resolved_key:
+            logger.warning(
+                "ANTHROPIC_API_KEY is not set. LLM gate evaluations will fail. "
+                "Manage API keys via a secrets manager with a documented rotation policy."
+            )
+        self._client = anthropic.Anthropic(api_key=resolved_key)
 
     def evaluate(self, finding: dict) -> GateResult:
         """Evaluate a single finding through the confidence gate.
@@ -235,6 +298,7 @@ class ConfidenceGate:
             GateResult with decision and reasoning.
         """
         finding_id = str(finding.get("id", ""))
+        severity = finding.get("severity", "").upper()
 
         # Fast path: rule-based gate
         rule_result = _apply_rule_based_gate(finding, self.config)
@@ -243,11 +307,32 @@ class ConfidenceGate:
                 "ConfidenceGate.evaluate: rule-based decision finding_id=%s decision=%s",
                 finding_id, rule_result.decision.value,
             )
+            # SOX: rule-based PASS for HIGH/CRITICAL is still subject to
+            # human-review enforcement downstream; emit audit event.
+            _emit_audit_event(
+                "gate_rule_decision",
+                finding_id=finding_id,
+                severity=severity,
+                decision=rule_result.decision.value,
+            )
             return rule_result
 
-        # LLM-based evaluation
-        user_prompt = json.dumps(finding, indent=2)
+        # Data minimization: only send allowlisted fields, with sensitive
+        # patterns redacted (GDPR Art. 25, HIPAA, PCI-DSS Req. 3.4)
+        safe_finding = _minimize_finding_for_llm(finding)
+        user_prompt = json.dumps(safe_finding, indent=2)
         logger.info("ConfidenceGate.evaluate finding_id=%s", finding_id)
+
+        # Audit: record external LLM transmission
+        _emit_audit_event(
+            "llm_transmission",
+            operation="evaluate",
+            finding_id=finding_id,
+            severity=severity,
+            model=self.config.model,
+            data_minimization_applied=True,
+            fields_transmitted=list(safe_finding.keys()),
+        )
 
         response = self._client.messages.create(
             model=self.config.model,
@@ -272,7 +357,7 @@ class ConfidenceGate:
 
         # Apply minimum confidence threshold
         threshold = SEVERITY_CONFIDENCE_THRESHOLDS.get(
-            finding.get("severity", "").upper(), ConfidenceLevel.MEDIUM
+            severity, ConfidenceLevel.MEDIUM
         )
         effective_threshold = max(
             _CONFIDENCE_ORDER.index(threshold),
@@ -292,6 +377,26 @@ class ConfidenceGate:
                 result.decision = GateDecision.DEFER
                 result.escalation_reason = "Not marked as auto-fixable"
 
+        # SOX Section 404: HIGH/CRITICAL findings must not auto-proceed —
+        # force ESCALATE so a human approval step is required downstream.
+        # This prevents the bypass risk where a PASS from an LLM-only review
+        # could allow automated changes to financial/critical code paths.
+        if severity in _HUMAN_REVIEW_REQUIRED_SEVERITIES and result.decision == GateDecision.PASS:
+            result.decision = GateDecision.ESCALATE
+            result.escalation_reason = (
+                f"Severity {severity} requires human review before automated action "
+                f"(SOX segregation-of-duties control)"
+            )
+
+        _emit_audit_event(
+            "gate_decision",
+            finding_id=finding_id,
+            severity=severity,
+            decision=result.decision.value,
+            confidence=result.confidence.value,
+            risk_score=result.risk_score,
+            escalation_reason=result.escalation_reason,
+        )
         return result
 
     def evaluate_batch(self, findings: list[dict]) -> list[GateResult]:
@@ -323,9 +428,21 @@ class ConfidenceGate:
         if pending:
             for i in range(0, len(pending), self.config.batch_size):
                 batch = pending[i:i + self.config.batch_size]
-                user_prompt = json.dumps(batch, indent=2)
+                # Data minimization before external transmission (GDPR Art. 25)
+                safe_batch = [_minimize_finding_for_llm(f) for f in batch]
+                user_prompt = json.dumps(safe_batch, indent=2)
                 logger.info(
                     "ConfidenceGate.evaluate_batch size=%d offset=%d", len(batch), i
+                )
+                # Audit: record LLM transmission
+                _emit_audit_event(
+                    "llm_transmission",
+                    operation="evaluate_batch",
+                    batch_size=len(batch),
+                    offset=i,
+                    model=self.config.model,
+                    data_minimization_applied=True,
+                    finding_ids=[str(f.get("id", "")) for f in batch],
                 )
 
                 response = self._client.messages.create(
@@ -346,6 +463,18 @@ class ConfidenceGate:
 
                 for item in batch_data:
                     gate_result = GateResult.from_dict(item)
+                    # SOX: HIGH/CRITICAL must not auto-proceed from batch evaluation
+                    original_finding = next(
+                        (f for f in batch if str(f.get("id", "")) == gate_result.finding_id),
+                        {},
+                    )
+                    orig_severity = original_finding.get("severity", "").upper()
+                    if orig_severity in _HUMAN_REVIEW_REQUIRED_SEVERITIES and gate_result.decision == GateDecision.PASS:
+                        gate_result.decision = GateDecision.ESCALATE
+                        gate_result.escalation_reason = (
+                            f"Severity {orig_severity} requires human review before automated action "
+                            f"(SOX segregation-of-duties control)"
+                        )
                     results[gate_result.finding_id] = gate_result
 
         # Reconstruct ordered output
