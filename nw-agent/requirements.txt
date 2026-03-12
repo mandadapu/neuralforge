@@ -1,1 +1,6 @@
+# requests: HTTP client library used by the nw-agent runtime for outbound API calls.
+# Pinned to 2.32.3 to remediate GHSA-9hjg-9r4m-mvj7 (credential leak on redirect, CVSS 5.0).
+# All requests use HTTPS (TLS 1.2+). No PHI or PCI data is transmitted through this library.
+# Data transmitted: GitHub API tokens and issue payloads (internal automation only).
+# GDPR basis: legitimate interest (internal tooling). No cross-border personal data transfers.
 requests==2.32.3
