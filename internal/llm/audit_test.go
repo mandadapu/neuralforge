@@ -47,15 +47,23 @@ func TestAuditingLLM_Name(t *testing.T) {
 }
 
 func TestNew_OpenAI(t *testing.T) {
-	llmClient := New("openai", "key", "gpt-4")
+	llmClient, err := New("openai", "key", "gpt-4")
+	require.NoError(t, err)
 	audited, ok := llmClient.(*AuditingLLM)
 	assert.True(t, ok)
 	assert.Equal(t, "openai", audited.Name())
 }
 
-func TestNew_DefaultClaude(t *testing.T) {
-	llmClient := New("claude", "key", "claude-3-opus-20240229")
+func TestNew_Claude(t *testing.T) {
+	llmClient, err := New("claude", "key", "claude-3-opus-20240229")
+	require.NoError(t, err)
 	audited, ok := llmClient.(*AuditingLLM)
 	assert.True(t, ok)
 	assert.Equal(t, "claude", audited.Name())
+}
+
+func TestNew_UnknownProvider(t *testing.T) {
+	llmClient, err := New("gemini", "key", "model")
+	assert.Nil(t, llmClient)
+	assert.ErrorContains(t, err, "unknown provider")
 }

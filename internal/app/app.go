@@ -178,7 +178,11 @@ func (a *App) buildJobHandler() worker.JobHandler {
 		apiKey = a.cfg.LLM.OpenAI.APIKey
 		model = a.cfg.LLM.OpenAI.Model
 	}
-	backend := llm.New(a.cfg.LLM.DefaultProvider, apiKey, model)
+	backend, err := llm.New(a.cfg.LLM.DefaultProvider, apiKey, model)
+	if err != nil {
+		slog.Error("invalid LLM provider configuration", "error", err.Error())
+		return nil
+	}
 
 	// Create executor based on config.
 	var exec executor.Executor
