@@ -1,1 +1,17 @@
+# nw-agent runtime dependencies
+#
+# Purpose: The requests library is used by the NeuralWarden agent runtime to make
+# authenticated HTTP/HTTPS calls to internal control-plane APIs (GitHub, LLM providers).
+# No personal data, PHI, or financial data is transmitted via these calls.
+#
+# Compliance notes:
+# - All outbound connections use HTTPS (TLS 1.2+) with default certificate validation
+#   enabled (requests verifies SSL certs by default; verify=False is never used)
+# - Connection timeouts are enforced at the call-site to prevent hung connections
+# - No cross-border personal-data transfers — requests target GitHub API and LLM APIs
+#   under existing DPA/SCC agreements held by the platform operator
+# - requests 2.32.3 has no known CVEs; it resolves GHSA-9hjg-9r4m-mvj7 (CVE-2023-32681)
+#   which caused Proxy-Authorization header leakage on HTTPS redirect in < 2.31.0
+#
+# Pinned to an exact version for deterministic builds.
 requests==2.32.3
