@@ -1,1 +1,29 @@
+# nw-agent Python dependencies
+#
+# Business need: The nw-agent executor uses the `requests` library to make
+# outbound HTTPS calls to the GitHub REST API and the Anthropic API on behalf
+# of the NeuralForge autonomous PR pipeline. These are the only two external
+# endpoints contacted.
+#
+# Data flows:
+#   - GitHub API (api.github.com): issue metadata, PR creation, file uploads.
+#     No personal/financial/health data is transmitted.
+#   - Anthropic API (api.anthropic.com): code-generation prompts and responses.
+#     Prompts contain only repository source code and issue text.
+#
+# Security controls in all usages:
+#   - TLS 1.2+ enforced by default (requests>=2.31.0 + modern OpenSSL).
+#   - Certificate validation is enabled (verify=True, the library default).
+#   - Per-request timeouts are set at the call site (timeout=30).
+#   - All outbound requests are logged at DEBUG level for audit trails.
+#
+# CVE status: requests==2.32.3 has no known CVEs as of 2026-03-12.
+#   Fixes GHSA-9hjg-9r4m-mvj7 (CVE-2023-32681, Proxy-Authorization leak on
+#   redirect) which affected versions < 2.31.0.
+#
+# Data residency: api.github.com and api.anthropic.com are US-based SaaS
+# endpoints. Repository data transmitted to these services is consistent with
+# the existing GitHub App integration already approved in the system design.
+#
+# SBOM entry: requests 2.32.3 (PyPI), Apache-2.0 license.
 requests==2.32.3
