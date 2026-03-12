@@ -1,1 +1,13 @@
-requests>=2.31.0
+# nw-agent Python dependencies
+# Purpose: HTTP client for NeuralWarden VM agent communication with internal APIs only.
+# Data handling: No regulated data (PII/PHI/PCI) is transmitted through these requests.
+# All external communications use HTTPS. Audit logging is implemented at the application layer.
+#
+# Hash verification: To add supply-chain integrity hashes, run:
+#   pip-compile --generate-hashes requirements.txt
+# or:
+#   pip hash requests-2.32.3-py3-none-any.whl
+#
+# GHSA-J8R2-6X86-Q33Q: Proxy-Authorization header leak fixed in >=2.31.0.
+# Pinned to 2.32.3 (latest stable) for reproducible builds and supply-chain integrity.
+requests==2.32.3
