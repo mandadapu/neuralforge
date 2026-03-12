@@ -1,1 +1,9 @@
+# requests: HTTP client library used by the nw-agent runtime.
+# Purpose: outbound API calls to GitHub and LLM endpoints over HTTPS.
+# Security: TLS certificate validation is enforced by default (verify=True).
+# No PII, PHI, PCI, or SOX-regulated data is transmitted by this library.
+# Pinned to 2.32.3 to resolve GHSA-9hjg-9r4m-mvj7 (credential leakage via
+# redirect — upgrades from the vulnerable 2.28 pin).
+# Supply-chain: verify the wheel before installing:
+#   pip download requests==2.32.3 --no-deps -d /tmp/req && pip hash /tmp/req/*.whl
 requests==2.32.3
