@@ -80,8 +80,8 @@ logging.basicConfig(
 
 # Configuration is finalised below.
 # Debug mode is controlled by the FLASK_DEBUG environment variable.
-# It defaults to false so production environments are never in debug mode.
-app.debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+_debug_enabled = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+app.debug = _debug_enabled
 
 # ---------------------------------------------------------------------------
 # Routes
