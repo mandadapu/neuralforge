@@ -12,10 +12,17 @@
 #     Prompts contain only repository source code and issue text.
 #
 # Security controls in all usages:
-#   - TLS 1.2+ enforced by default (requests>=2.31.0 + modern OpenSSL).
-#   - Certificate validation is enabled (verify=True, the library default).
-#   - Per-request timeouts are set at the call site (timeout=30).
-#   - All outbound requests are logged at DEBUG level for audit trails.
+#   All usage of `requests` is funnelled through nw-agent/http_client.py, which
+#   is the single approved wrapper for outbound calls. Direct use of `requests`
+#   outside that module is prohibited by code review policy.
+#   Controls enforced by http_client.py:
+#   - Allowlist: only api.github.com and api.anthropic.com are permitted;
+#     requests to any other host raise ValueError before the socket is opened.
+#   - TLS 1.2+ enforced via _TLS12EnforcingAdapter (ssl.TLSVersion.TLSv1_2).
+#   - Certificate validation is enabled (verify=True cannot be overridden).
+#   - Plain HTTP is blocked by _BlockHTTPAdapter; HTTPS is mandatory.
+#   - Per-request timeouts: connect=10 s, read=30 s (DEFAULT_TIMEOUT).
+#   - All outbound requests and responses are logged at DEBUG level for audit.
 #
 # CVE status: requests==2.32.3 has no known CVEs as of 2026-03-12.
 #   Fixes GHSA-9hjg-9r4m-mvj7 (CVE-2023-32681, Proxy-Authorization leak on
