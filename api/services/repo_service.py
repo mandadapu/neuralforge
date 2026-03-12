@@ -27,7 +27,10 @@ class RepoService:
                 f"installation_id must be a positive integer, got {installation_id!r}"
             )
         token = get_installation_token(installation_id)
-        self._gh = GitHubClient(token=token)
+        # Use double-underscore prefix so Python name-mangles this to
+        # _RepoService__gh, preventing external callers from bypassing the
+        # audit-logged public methods via direct attribute access.
+        self.__gh = GitHubClient(token=token)
         self._installation_id = installation_id
 
     def clone(self, repo: Repository, ref: str) -> str:
@@ -38,7 +41,7 @@ class RepoService:
             repo.full_name,
             ref,
         )
-        return clone_repo(self._gh, repo, ref)
+        return clone_repo(self.__gh, repo, ref)
 
     def checkout(self, local_path: str, branch: str) -> None:
         _audit_log.info(
@@ -56,7 +59,7 @@ class RepoService:
             head.name,
             base.name,
         )
-        return create_pr(self._gh, repo, head, base, title, body)
+        return create_pr(self.__gh, repo, head, base, title, body)
 
     def create_issue(self, repo: Repository, title: str, body: str):
         """Open a GitHub issue via the internal GitHub client."""
@@ -66,7 +69,7 @@ class RepoService:
             repo.full_name,
             len(title),
         )
-        return self._gh.create_issue(repo=repo, title=title, body=body)
+        return self.__gh.create_issue(repo=repo, title=title, body=body)
 
     def diff(self, local_path: str, base_ref: str, head_ref: str) -> str:
         return generate_diff(local_path, base_ref, head_ref)

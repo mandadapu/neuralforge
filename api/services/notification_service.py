@@ -67,5 +67,17 @@ class NotificationService:
         send_email(to=to, subject=safe_subject, body=safe_body)
 
     def webhook(self, url: str, payload: dict) -> None:
-        _audit_log.info("notification.webhook url=%s", url)
-        post_webhook(url, payload)
+        # Redact string values in the payload before delivery.
+        # Non-string values (ints, bools, nested dicts) are forwarded as-is;
+        # nested structures should be flattened by the caller if they may
+        # contain PII (HIPAA §164.312(b), GDPR Art. 5(1)(c)).
+        safe_payload = {
+            k: _redact(v) if isinstance(v, str) else v
+            for k, v in payload.items()
+        }
+        _audit_log.info(
+            "notification.webhook url=%s keys=%s",
+            url,
+            list(safe_payload.keys()),
+        )
+        post_webhook(url, safe_payload)
