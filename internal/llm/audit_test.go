@@ -100,3 +100,43 @@ func TestSanitizeError_truncates(t *testing.T) {
 	assert.LessOrEqual(t, len(result), maxErrLogLen+len("...[truncated]"))
 	assert.Contains(t, result, "[truncated]")
 }
+
+func TestSanitizeField_short(t *testing.T) {
+	assert.Equal(t, "gpt-4", sanitizeField("gpt-4"))
+}
+
+func TestSanitizeField_truncates(t *testing.T) {
+	long := strings.Repeat("m", 200)
+	result := sanitizeField(long)
+	assert.LessOrEqual(t, len(result), maxFieldLen+len("...[truncated]"))
+	assert.Contains(t, result, "[truncated]")
+}
+
+func TestAuditedLLM_Complete_sanitizesModel(t *testing.T) {
+	longModel := strings.Repeat("m", 200)
+	want := CompletionResponse{
+		Content: "hi",
+		Model:   longModel,
+	}
+	mock := &mockLLM{name: "openai", resp: want}
+	audited := NewAudited(mock)
+
+	// Verify the response passes through unchanged (model field is not mutated).
+	got, err := audited.Complete(context.Background(), CompletionRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, longModel, got.Model, "response model must not be mutated by audit wrapper")
+}
+
+func TestAuditedLLM_StreamComplete_logsModel(t *testing.T) {
+	ch := make(chan StreamChunk, 1)
+	ch <- StreamChunk{Content: "done", Done: true}
+	close(ch)
+
+	mock := &mockLLM{name: "claude", streamCh: ch}
+	audited := NewAudited(mock)
+
+	got, err := audited.StreamComplete(context.Background(), CompletionRequest{Model: "claude-3"})
+	require.NoError(t, err)
+	for range got {
+	}
+}

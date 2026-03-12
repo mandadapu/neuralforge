@@ -10,6 +10,12 @@ import (
 // logging of sensitive content that may be embedded in upstream error messages.
 const maxErrLogLen = 200
 
+// maxFieldLen caps arbitrary string fields (e.g. model names) written to audit
+// logs. Provider-assigned model identifiers are typically short (< 50 chars);
+// capping at 100 guards against a misconfigured or malicious value carrying
+// PII/PHI into the log stream.
+const maxFieldLen = 100
+
 // sanitizeError returns a safe, length-bounded string for audit log entries.
 // Full error messages can embed request/response content containing PII/PHI;
 // truncating removes that risk while preserving enough context for diagnostics.
@@ -17,6 +23,23 @@ func sanitizeError(err error) string {
 	s := err.Error()
 	if len(s) > maxErrLogLen {
 		return s[:maxErrLogLen] + "...[truncated]"
+	}
+	return s
+}
+
+// sanitizeField truncates an arbitrary string field to maxFieldLen characters
+// before it is written to an audit log entry. Use this for every string field
+// whose value originates from an external system (e.g. provider-returned model
+// name) to prevent accidental logging of PII/PHI embedded in that value.
+//
+// Log governance note: audit log entries produced by AuditedLLM contain only
+// numeric metrics and sanitized string identifiers — never request/response
+// content. Operators are responsible for configuring log retention, access
+// controls, and encryption at rest/in transit to satisfy applicable compliance
+// requirements (SOX, HIPAA, etc.).
+func sanitizeField(s string) string {
+	if len(s) > maxFieldLen {
+		return s[:maxFieldLen] + "...[truncated]"
 	}
 	return s
 }
@@ -49,7 +72,9 @@ func (a *AuditedLLM) Complete(ctx context.Context, req CompletionRequest) (Compl
 
 	attrs := []any{
 		"provider", a.inner.Name(),
-		"model", resp.Model,
+		// sanitizeField guards against a provider returning an unexpectedly long
+		// or PII-bearing model identifier.
+		"model", sanitizeField(resp.Model),
 		"input_tokens", resp.InputTokens,
 		"output_tokens", resp.OutputTokens,
 		"cost_usd", resp.Cost,
@@ -66,15 +91,24 @@ func (a *AuditedLLM) Complete(ctx context.Context, req CompletionRequest) (Compl
 }
 
 // StreamComplete wraps the inner stream and emits an audit log entry when the
-// stream completes (Done=true) or encounters an error, recording latency and
-// total content bytes as a proxy for token usage (streaming APIs do not always
-// surface per-chunk token counts).
+// stream completes (Done=true) or encounters an error. The entry records:
+// provider, requested model (sanitized), latency, total content bytes, and —
+// when the Done chunk carries them — input/output token counts and cost.
+//
+// Note: many streaming APIs do not surface per-chunk token counts; in that case
+// total_content_bytes serves as a proxy for usage. Operators who require exact
+// token accounting should prefer Complete over StreamComplete.
 func (a *AuditedLLM) StreamComplete(ctx context.Context, req CompletionRequest) (<-chan StreamChunk, error) {
 	start := time.Now()
+	// Capture the requested model name now; it is available from the request
+	// regardless of whether the provider echoes it back in stream chunks.
+	requestedModel := sanitizeField(req.Model)
+
 	innerCh, err := a.inner.StreamComplete(ctx, req)
 	if err != nil {
 		slog.WarnContext(ctx, "llm.StreamComplete failed",
 			"provider", a.inner.Name(),
+			"model", requestedModel,
 			"error", sanitizeError(err),
 		)
 		return nil, err
@@ -91,6 +125,7 @@ func (a *AuditedLLM) StreamComplete(ctx context.Context, req CompletionRequest) 
 				elapsed := time.Since(start)
 				attrs := []any{
 					"provider", a.inner.Name(),
+					"model", requestedModel,
 					"latency_ms", elapsed.Milliseconds(),
 					"total_content_bytes", totalBytes,
 				}
