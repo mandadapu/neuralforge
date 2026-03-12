@@ -1,6 +1,7 @@
 """LLM SAST Scanner — static analysis for LLM-specific security patterns."""
 # This file is auto-generated/scaffolded to satisfy agent_sec_003 remediation.
 
+import os
 import re
 from typing import Any
 
@@ -84,8 +85,6 @@ def scan_file(path: str) -> list[dict[str, Any]]:
 
 def scan_paths(paths: list[str]) -> list[dict[str, Any]]:
     """Scan multiple files/directories."""
-    import os
-
     all_findings: list[dict[str, Any]] = []
     for p in paths:
         if os.path.isdir(p):
