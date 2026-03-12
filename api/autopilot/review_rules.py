@@ -76,7 +76,8 @@ def _validate_rule(rule: dict) -> None:
 
     extra = rule.keys() - _ALLOWED_RULE_KEYS
     if extra:
-        raise ValueError(f"Rule contains unexpected keys: {extra!r}")
+        # Do NOT echo the extra keys — they are caller-controlled input.
+        raise ValueError("Rule contains unexpected keys; only 'field', 'operator', 'value', and 'description' are permitted")
 
     if not isinstance(rule["field"], str) or not rule["field"]:
         raise ValueError("Rule 'field' must be a non-empty string")
@@ -98,12 +99,22 @@ def _validate_rule(rule: dict) -> None:
             f"Rule 'value' must be one of {[t.__name__ for t in _ALLOWED_VALUE_TYPES]}, "
             f"got {type(value).__name__!r}"
         )
-    # If value is a list, all elements must also be primitive types.
+    # String value length limit: cap to prevent embedding large sensitive blobs in rules.
+    _MAX_STRING_VALUE_LEN = 256
+    if isinstance(value, str) and len(value) > _MAX_STRING_VALUE_LEN:
+        raise ValueError(
+            f"Rule 'value' string exceeds maximum allowed length of {_MAX_STRING_VALUE_LEN} characters"
+        )
+    # If value is a list, all elements must also be primitive types and strings must be bounded.
     if isinstance(value, list):
         for item in value:
             if not isinstance(item, (str, int, float, bool)):
                 raise TypeError(
                     "Rule 'value' list elements must be str, int, float, or bool"
+                )
+            if isinstance(item, str) and len(item) > _MAX_STRING_VALUE_LEN:
+                raise ValueError(
+                    f"Rule 'value' list string element exceeds maximum allowed length of {_MAX_STRING_VALUE_LEN} characters"
                 )
 
 
@@ -171,9 +182,16 @@ def evaluate_rules(rules: list[dict], payload: dict, match_all: bool = True) -> 
     if not rules:
         return False
 
-    results = (evaluate_rule(rule, payload) for rule in rules)
+    try:
+        results = (evaluate_rule(rule, payload) for rule in rules)
+        outcome = all(results) if match_all else any(results)
+    except Exception:
+        _audit_log.warning(
+            "Rules batch evaluation error",
+            extra={"rule_count": len(rules), "match_all": match_all},
+        )
+        raise
 
-    outcome = all(results) if match_all else any(results)
     _audit_log.info(
         "Rules batch evaluated",
         extra={"rule_count": len(rules), "match_all": match_all, "outcome": outcome},
