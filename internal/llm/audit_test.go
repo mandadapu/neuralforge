@@ -19,7 +19,14 @@ func (m *mockLLM) Complete(_ context.Context, _ CompletionRequest) (CompletionRe
 	return m.resp, m.err
 }
 func (m *mockLLM) StreamComplete(_ context.Context, _ CompletionRequest) (<-chan StreamChunk, error) {
-	return nil, nil
+	if m.err != nil {
+		return nil, m.err
+	}
+	ch := make(chan StreamChunk, 2)
+	ch <- StreamChunk{Content: "hello"}
+	ch <- StreamChunk{Content: " world", Done: true}
+	close(ch)
+	return ch, nil
 }
 
 func TestAuditedLLM_Complete(t *testing.T) {
@@ -50,6 +57,27 @@ func TestAuditedLLM_Complete(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAuditedLLM_StreamComplete(t *testing.T) {
+	t.Run("success emits all chunks", func(t *testing.T) {
+		a := NewAudited(&mockLLM{name: "mock"})
+		ch, err := a.StreamComplete(context.Background(), CompletionRequest{})
+		assert.NoError(t, err)
+		var chunks []StreamChunk
+		for c := range ch {
+			chunks = append(chunks, c)
+		}
+		assert.Len(t, chunks, 2)
+		assert.True(t, chunks[1].Done)
+	})
+
+	t.Run("error propagated", func(t *testing.T) {
+		a := NewAudited(&mockLLM{name: "mock", err: fmt.Errorf("stream fail")})
+		ch, err := a.StreamComplete(context.Background(), CompletionRequest{})
+		assert.Error(t, err)
+		assert.Nil(t, ch)
+	})
 }
 
 func TestNew(t *testing.T) {

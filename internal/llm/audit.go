@@ -1,3 +1,24 @@
+// Package llm provides LLM client implementations and an auditing wrapper.
+//
+// # Audit Logging — Data Minimization Policy
+//
+// AuditedLLM logs only operational metadata to satisfy HIPAA §164.312(b),
+// GDPR Article 32, and PCI-DSS Requirement 3.4. The following fields are
+// deliberately excluded from all log entries to prevent PHI/PAN/personal-data
+// leakage:
+//
+//   - CompletionRequest.System     (may contain user instructions with PII)
+//   - CompletionRequest.Messages   (may contain PHI, PAN, or personal data)
+//   - CompletionResponse.Content   (may contain derived/reflected sensitive data)
+//
+// Only the following non-content operational fields are logged:
+//
+//   - provider name, model identifier, max_tokens (request sizing)
+//   - input_tokens, output_tokens, cost_usd, duration_ms (billing/performance)
+//
+// These fields contain no user-supplied data and carry negligible re-identification
+// risk. If the deployment context requires stricter controls (e.g., zero-log mode),
+// replace NewAudited with a no-op wrapper before calling llm.New.
 package llm
 
 import (
@@ -7,6 +28,7 @@ import (
 )
 
 // AuditedLLM wraps any LLM and emits structured slog entries for every call.
+// See package-level documentation for the data minimization policy.
 type AuditedLLM struct {
 	inner LLM
 }
@@ -47,8 +69,45 @@ func (a *AuditedLLM) Complete(ctx context.Context, req CompletionRequest) (Compl
 }
 
 func (a *AuditedLLM) StreamComplete(ctx context.Context, req CompletionRequest) (<-chan StreamChunk, error) {
-	slog.Info("llm stream start", "provider", a.inner.Name(), "model", req.Model)
-	return a.inner.StreamComplete(ctx, req)
+	start := time.Now()
+	provider := a.inner.Name()
+	slog.Info("llm stream start", "provider", provider, "model", req.Model)
+
+	inner, err := a.inner.StreamComplete(ctx, req)
+	if err != nil {
+		slog.Error("llm stream error",
+			"provider", provider,
+			"model", req.Model,
+			"error", err,
+			"duration_ms", time.Since(start).Milliseconds(),
+		)
+		return nil, err
+	}
+
+	// Wrap the channel so we can emit a completion audit event when streaming ends.
+	out := make(chan StreamChunk)
+	go func() {
+		defer close(out)
+		for chunk := range inner {
+			out <- chunk
+			if chunk.Done {
+				slog.Info("llm stream ok",
+					"provider", provider,
+					"model", req.Model,
+					"duration_ms", time.Since(start).Milliseconds(),
+				)
+			}
+			if chunk.Error != nil {
+				slog.Error("llm stream chunk error",
+					"provider", provider,
+					"model", req.Model,
+					"error", chunk.Error,
+					"duration_ms", time.Since(start).Milliseconds(),
+				)
+			}
+		}
+	}()
+	return out, nil
 }
 
 // New is the authoritative factory for creating audited LLM clients.
