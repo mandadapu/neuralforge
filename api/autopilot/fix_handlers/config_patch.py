@@ -21,7 +21,7 @@ def build_cors_config() -> dict:
 def patch_cors_settings(config: dict) -> dict:
     """Apply CORS security patch to an existing configuration dictionary.
 
-    Merges the secure CORS settings from build_cors_config into config,
+    Updates config with the restricted origin settings from build_cors_config,
     overwriting any existing CORS keys.
     """
     config.update(build_cors_config())
