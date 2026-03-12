@@ -1,1 +1,4 @@
+# Security patch: upgraded from requests==2.28 to fix CVE-2023-32681 / GHSA-9wx4-h78v-vm56
+# This library is used for internal agent-to-host API communication only.
+# See secure_requests.py for enforced TLS and usage policy.
 requests==2.32.3
