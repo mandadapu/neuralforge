@@ -2,9 +2,23 @@
 
 Rules are evaluated using an explicit if/elif chain.
 Dynamic code execution (eval/exec/callable dispatch) is never used.
+
+Security and compliance notes:
+- All rule evaluation outcomes are logged via the standard ``logging`` module
+  to support audit trail requirements (GDPR Art. 15, HIPAA §164.312(b), SOX).
+- Callers are responsible for restricting which fields and payloads are passed
+  to this engine; this module does not enforce a field-level allowlist because
+  the set of valid fields is context-dependent.  Apply field allowlisting at
+  the call site before invoking ``evaluate_rules``/``evaluate_rule``.
+- String operators validate that the payload field value is a ``str`` before
+  operating on it, preventing type-confusion exceptions that could expose data.
 """
 
 from __future__ import annotations
+
+import logging
+
+_logger = logging.getLogger(__name__)
 
 # Allowlist of supported rule operator names.
 _ALLOWED_OPERATORS: frozenset[str] = frozenset({
@@ -57,24 +71,42 @@ def evaluate_rule(rule: dict, payload: dict) -> bool:
     value = rule["value"]
     field_val = payload.get(field)
 
+    # Validate that field_val is a str before performing string operations to
+    # prevent TypeError exceptions that could inadvertently expose payload data.
+    _STRING_OPERATORS = frozenset({"contains", "not_contains", "startswith", "endswith"})
+    if operator in _STRING_OPERATORS and field_val is not None and not isinstance(field_val, str):
+        raise ValueError(
+            f"Field {field!r} must be a string for operator {operator!r}, "
+            f"got {type(field_val).__name__!r}"
+        )
+
     if operator == "equals":
-        return field_val == value
+        result = field_val == value
     elif operator == "not_equals":
-        return field_val != value
+        result = field_val != value
     elif operator == "contains":
-        return value in (field_val or "")
+        result = value in (field_val or "")
     elif operator == "not_contains":
-        return value not in (field_val or "")
+        result = value not in (field_val or "")
     elif operator == "startswith":
-        return (field_val or "").startswith(value)
+        result = (field_val or "").startswith(value)
     elif operator == "endswith":
-        return (field_val or "").endswith(value)
+        result = (field_val or "").endswith(value)
     elif operator == "in":
-        return field_val in value
+        result = field_val in value
     elif operator == "not_in":
-        return field_val not in value
-    # Unreachable: operator was validated against _ALLOWED_OPERATORS above.
-    raise AssertionError(f"Unhandled operator: {operator!r}")  # pragma: no cover
+        result = field_val not in value
+    else:  # pragma: no cover
+        # Unreachable: operator was validated against _ALLOWED_OPERATORS above.
+        raise AssertionError(f"Unhandled operator: {operator!r}")
+
+    _logger.info(
+        "rule_evaluated field=%r operator=%r result=%r",
+        field,
+        operator,
+        result,
+    )
+    return result
 
 
 def evaluate_rules(rules: list[dict], payload: dict) -> bool:
@@ -89,4 +121,10 @@ def evaluate_rules(rules: list[dict], payload: dict) -> bool:
     Returns:
         True if all rules match, False otherwise.
     """
-    return all(evaluate_rule(rule, payload) for rule in rules)
+    result = all(evaluate_rule(rule, payload) for rule in rules)
+    _logger.info(
+        "rules_evaluated rule_count=%d result=%r",
+        len(rules),
+        result,
+    )
+    return result
