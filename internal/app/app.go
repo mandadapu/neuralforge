@@ -182,6 +182,7 @@ func (a *App) buildJobHandler() worker.JobHandler {
 	if err != nil {
 		slog.Error("failed to create LLM backend", "error", err)
 		return func(ctx context.Context, job store.Job) error {
+			slog.Error("LLM backend unavailable", "job_id", job.ID, "error", err)
 			return fmt.Errorf("LLM backend init: %w", err)
 		}
 	}
