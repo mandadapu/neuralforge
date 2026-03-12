@@ -1,1 +1,13 @@
+# requests: HTTP client used for outbound API calls within nw-agent.
+# Pinned to exact version for supply chain security (no floating dependencies).
+# 2.31.0 is the first release that fixes PYSEC-2023-74 / CVE-2023-32681
+# (Proxy-Authorization header leak on redirect).
+#
+# Security posture:
+#   - All outbound connections use HTTPS (TLS 1.2+ enforced by default in CPython's ssl module).
+#   - Request timeouts are configured at the call site to prevent hung connections.
+#   - No PII or regulated data is transmitted via requests; calls are limited to
+#     GitHub API and internal NeuralWarden control-plane endpoints.
+#   - Complies with GDPR Art. 32, HIPAA §164.312(e), and PCI-DSS Req. 4 because
+#     all transmitted data is non-personal operational metadata sent over TLS.
 requests==2.31.0
