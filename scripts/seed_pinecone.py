@@ -1,6 +1,5 @@
 import os
 import re
-import sys
 import logging
 from pinecone import Pinecone
 from openai import OpenAI
@@ -8,9 +7,7 @@ from openai import OpenAI
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-PINECONE_API_KEY = os.environ["PINECONE_API_KEY"]
-OPENAI_API_KEY   = os.environ["OPENAI_API_KEY"]
-INDEX_NAME       = os.environ.get("PINECONE_INDEX", "neuralforge-docs")
+INDEX_NAME = os.environ.get("PINECONE_INDEX", "neuralforge-docs")
 
 # Patterns that look like injected instructions or role overrides
 _INSTRUCTION_PATTERNS = [
@@ -54,9 +51,9 @@ def sanitize_content(text: str) -> str | None:
 
 
 def ingest_documents(documents: list[dict]) -> None:
-    pc     = Pinecone(api_key=PINECONE_API_KEY)
+    pc     = Pinecone(api_key=os.environ["PINECONE_API_KEY"])
     index  = pc.Index(INDEX_NAME)
-    client = OpenAI(api_key=OPENAI_API_KEY)
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
     vectors = []
     for doc in documents:
