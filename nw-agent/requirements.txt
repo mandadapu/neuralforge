@@ -1,1 +1,7 @@
-requests==2.32.3
+# requests 2.32.3 — pinned to resolve GHSA-9wx4-h78v-vm56 (Proxy-Authorization header leak).
+# Requires >= 2.31.0; 2.32.3 is the latest stable release as of 2026-03-12.
+# Hashes verified from PyPI (https://pypi.org/project/requests/2.32.3/#files).
+# Regenerate with: pip download --no-deps requests==2.32.3 && pip hash requests-*.whl requests-*.tar.gz
+requests==2.32.3 \
+    --hash=sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfca038c02654d061d6dcc6 \
+    --hash=sha256:55365417734eb18255590a9f9f657c9e31e50f606fb72769e1dc1494d1d4e85b
