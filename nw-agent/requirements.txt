@@ -1,0 +1,17 @@
+# NeuralWarden agent worker environment dependencies
+#
+# Usage context: The `requests` library is used exclusively for outbound HTTPS
+# calls to the GitHub API (api.github.com) and the Anthropic/LLM API endpoints.
+# No regulated data (PII, PHI, PCI, financial) is transmitted — only code
+# repository metadata, issue text, and LLM prompts/completions.
+#
+# Security controls:
+#   - All connections use TLS (HTTPS); plain HTTP is not permitted.
+#   - Credentials are supplied via environment variables, never hard-coded.
+#   - All API calls are made through the NeuralWarden pipeline which logs
+#     outbound requests at the executor layer for audit purposes.
+#
+# This version constraint (>=2.31.0) addresses CVE-2023-32681 / GHSA-J8R2-6X86-Q33Q,
+# which allowed proxy-authorization headers to leak to destination servers on
+# redirect. Fixed in requests 2.31.0.
+requests>=2.31.0,<3.0.0
