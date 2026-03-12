@@ -173,12 +173,32 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 func (a *App) buildJobHandler() worker.JobHandler {
 	// Create LLM backend based on config.
 	var backend llm.LLM
+	var llmErr error
 	switch a.cfg.LLM.DefaultProvider {
 	case "openai":
-		backend = llm.NewOpenAI(a.cfg.LLM.OpenAI.APIKey, a.cfg.LLM.OpenAI.Model)
+		backend, llmErr = llm.NewOpenAI(a.cfg.LLM.OpenAI.APIKey, a.cfg.LLM.OpenAI.Model)
 	default:
-		backend = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
+		backend, llmErr = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
 	}
+	if llmErr != nil {
+		// Log a sanitized message — avoid logging llmErr directly to prevent
+		// inadvertent exposure of API key characteristics or config details.
+		provider := a.cfg.LLM.DefaultProvider
+		if provider == "" {
+			provider = "claude"
+		}
+		slog.Error("failed to create LLM backend", "provider", provider)
+		return func(ctx context.Context, job store.Job) error {
+			// Include audit fields (job ID, provider, timestamp) for compliance
+			// investigations. Do not wrap llmErr to avoid leaking config details.
+			return fmt.Errorf("LLM backend unavailable: provider=%s job=%s time=%s",
+				provider, job.ID, time.Now().UTC().Format(time.RFC3339))
+		}
+	}
+
+	// Wrap with circuit breaker to prevent cascading failures when the LLM
+	// provider is unavailable or rate-limiting repeatedly.
+	backend = llm.WrapCircuitBreaker(backend)
 
 	// Create executor based on config.
 	var exec executor.Executor

@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -14,12 +15,18 @@ type OpenAIBackend struct {
 	model  string
 }
 
-func NewOpenAI(apiKey, model string) *OpenAIBackend {
-	client := openai.NewClient(option.WithAPIKey(apiKey))
-	return &OpenAIBackend{
-		client: client,
-		model:  model,
+func NewOpenAI(apiKey, model string) (*OpenAIBackend, error) {
+	if apiKey == "" {
+		return nil, fmt.Errorf("openai: API key must not be empty")
 	}
+	if len(apiKey) < minAPIKeyLen {
+		return nil, fmt.Errorf("openai: API key is invalid")
+	}
+	if !strings.HasPrefix(apiKey, "sk-") {
+		return nil, fmt.Errorf("openai: API key has invalid format")
+	}
+	client := openai.NewClient(option.WithAPIKey(apiKey))
+	return &OpenAIBackend{client: client, model: model}, nil
 }
 
 func (o *OpenAIBackend) Name() string {
