@@ -98,6 +98,23 @@ func TestRedactError_Nil(t *testing.T) {
 	assert.Equal(t, "", redactError(nil))
 }
 
+func TestSanitizeForLog_Clean(t *testing.T) {
+	assert.Equal(t, "gpt-4", sanitizeForLog("gpt-4"))
+}
+
+func TestSanitizeForLog_ControlChars(t *testing.T) {
+	result := sanitizeForLog("gpt-4\nForged-Log: injected")
+	assert.NotContains(t, result, "\n")
+	assert.Contains(t, result, "_")
+}
+
+func TestSanitizeForLog_Truncated(t *testing.T) {
+	long := strings.Repeat("a", maxLogFieldLen+10)
+	result := sanitizeForLog(long)
+	assert.LessOrEqual(t, len(result), maxLogFieldLen+len("[truncated]"))
+	assert.Contains(t, result, "[truncated]")
+}
+
 func TestNew_DisallowedProvider(t *testing.T) {
 	_, err := New("unknown-provider", "key", "model")
 	assert.Error(t, err)
