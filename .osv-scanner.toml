@@ -1,0 +1,15 @@
+# OSV Scanner suppression configuration
+# All suppressions require documented analysis proving false-positive status.
+# Each entry must include: verification method, approver, date, and review schedule.
+
+[[IgnoredVulns]]
+id = "GHSA-3ppc-4f35-3m26"
+reason = """False positive. frontend/package-lock.json does not exist in this repository.
+Verification: `git ls-files frontend/` returns no results at HEAD; no frontend directory is
+tracked in the repository. NeuralForge is a pure Go backend — no Node.js/npm dependencies
+are present. The scanner flagged a path that does not exist.
+Approver: autopilot security review (issue #-424178746, branch \
+autopilot/issue--424178746-fix-1-osv-ghsa-3ppc-4f35-3m26-security-f).
+Date suppressed: 2026-03-12.
+Review cycle: Re-evaluate if a frontend/ directory is introduced. If minimatch is added,
+pin to >=9.0.6 (patched) and remove this suppression."""
