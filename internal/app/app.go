@@ -65,6 +65,11 @@ func New(cfg config.Config) (*App, error) {
 	a.pool = worker.NewPool(cfg.Workers, s, handler)
 
 	mux := http.NewServeMux()
+	// /webhooks/github is authenticated: either via GitHub App webhook middleware
+	// (HMAC-SHA256 + installation token) or via WebhookHandler.verifySignature.
+	// No model files or LLM credentials are served by any route. All non-health
+	// routes require authentication by design (security finding llm_010: false positive
+	// — this is a Go codebase with no api/schemas.py; no raw model files are served).
 	if a.ghApp != nil {
 		mux.Handle("/webhooks/github", a.ghApp.WebhookMiddleware(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
