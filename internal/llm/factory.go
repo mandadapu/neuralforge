@@ -9,6 +9,11 @@ import (
 // New creates an LLM backend for the given provider and wraps it in an
 // auditing layer that logs each completion call via slog.
 // provider must be "openai" or "claude" (default).
+//
+// Audit log data-minimization: only request metadata (provider, model,
+// token counts, cost) is logged — prompt content and completions are never
+// written to the audit log, preventing inadvertent capture of PII/PHI that
+// may appear in code diffs, issue bodies, or repository data.
 func New(provider, apiKey, model string) (LLM, error) {
 	var backend LLM
 	switch provider {
@@ -48,5 +53,25 @@ func (a *auditedLLM) Complete(ctx context.Context, req CompletionRequest) (Compl
 }
 
 func (a *auditedLLM) StreamComplete(ctx context.Context, req CompletionRequest) (<-chan StreamChunk, error) {
-	return a.inner.StreamComplete(ctx, req)
+	inner, err := a.inner.StreamComplete(ctx, req)
+	if err != nil {
+		slog.Warn("llm stream failed", "provider", a.inner.Name(), "model", req.Model, "error", err)
+		return nil, err
+	}
+
+	out := make(chan StreamChunk)
+	go func() {
+		defer close(out)
+		for chunk := range inner {
+			if chunk.Done {
+				if chunk.Error != nil {
+					slog.Warn("llm stream completed with error", "provider", a.inner.Name(), "model", req.Model, "error", chunk.Error)
+				} else {
+					slog.Info("llm stream completed", "provider", a.inner.Name(), "model", req.Model)
+				}
+			}
+			out <- chunk
+		}
+	}()
+	return out, nil
 }
