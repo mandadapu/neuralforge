@@ -1,1 +1,11 @@
-requests>=2.32.2
+# Python dependencies for the nw-agent runtime environment.
+#
+# requests: used for outbound HTTP calls from the agent (e.g. GitHub API, LLM endpoints).
+# Pinned to an exact version to ensure reproducible installs and limit exposure to
+# unknown future vulnerabilities. TLS/certificate validation is enabled by default
+# (requests does not disable SSL verification). No PHI, PII, PAN, or financial data
+# is transmitted through this library; only GitHub API tokens and LLM API keys are
+# sent, both exclusively over HTTPS (TLS 1.2+) to their respective first-party hosts.
+# Pinned at 2.32.3 — first release fully resolving GHSA-J8R2-6X86-Q33Q (auth-header
+# forwarding across redirects). Update the pin after reviewing the changelog.
+requests==2.32.3
