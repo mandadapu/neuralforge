@@ -196,6 +196,10 @@ func (a *App) buildJobHandler() worker.JobHandler {
 		}
 	}
 
+	// Wrap with circuit breaker to prevent cascading failures when the LLM
+	// provider is unavailable or rate-limiting repeatedly.
+	backend = llm.WrapCircuitBreaker(backend)
+
 	// Create executor based on config.
 	var exec executor.Executor
 	switch a.cfg.Executor.DefaultType {

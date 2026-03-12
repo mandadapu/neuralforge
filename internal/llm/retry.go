@@ -8,8 +8,68 @@ import (
 	"math"
 	"net"
 	"strings"
+	"sync"
 	"time"
 )
+
+const (
+	// cbThreshold is the number of consecutive failures before the circuit opens.
+	cbThreshold = 5
+	// cbCooldown is how long the circuit stays open before allowing retries.
+	cbCooldown = 2 * time.Minute
+)
+
+// circuitBreakerLLM wraps an LLM backend with a simple circuit breaker that
+// stops forwarding requests after cbThreshold consecutive failures, preventing
+// cascading failures in downstream systems.
+type circuitBreakerLLM struct {
+	backend   LLM
+	mu        sync.Mutex
+	failures  int
+	openUntil time.Time
+}
+
+// WrapCircuitBreaker wraps an LLM with a circuit breaker. After cbThreshold
+// consecutive errors the circuit opens for cbCooldown; it resets on success.
+func WrapCircuitBreaker(backend LLM) LLM {
+	return &circuitBreakerLLM{backend: backend}
+}
+
+func (cb *circuitBreakerLLM) Name() string { return cb.backend.Name() }
+
+func (cb *circuitBreakerLLM) Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
+	cb.mu.Lock()
+	if time.Now().Before(cb.openUntil) {
+		cb.mu.Unlock()
+		return CompletionResponse{}, fmt.Errorf("llm circuit breaker open: provider=%s", cb.backend.Name())
+	}
+	cb.mu.Unlock()
+
+	resp, err := cb.backend.Complete(ctx, req)
+
+	cb.mu.Lock()
+	defer cb.mu.Unlock()
+	if err != nil {
+		cb.failures++
+		if cb.failures >= cbThreshold {
+			cb.openUntil = time.Now().Add(cbCooldown)
+			log.Printf("llm: circuit breaker opened for %s after %d consecutive failures", cb.backend.Name(), cb.failures)
+		}
+	} else {
+		cb.failures = 0
+	}
+	return resp, err
+}
+
+func (cb *circuitBreakerLLM) StreamComplete(ctx context.Context, req CompletionRequest) (<-chan StreamChunk, error) {
+	cb.mu.Lock()
+	if time.Now().Before(cb.openUntil) {
+		cb.mu.Unlock()
+		return nil, fmt.Errorf("llm circuit breaker open: provider=%s", cb.backend.Name())
+	}
+	cb.mu.Unlock()
+	return cb.backend.StreamComplete(ctx, req)
+}
 
 // RetryConfig controls retry behavior for LLM API calls.
 type RetryConfig struct {

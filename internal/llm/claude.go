@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	anthropic "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
@@ -24,6 +25,9 @@ func NewClaude(apiKey, model string) (*ClaudeBackend, error) {
 	}
 	if len(apiKey) < minAPIKeyLen {
 		return nil, fmt.Errorf("claude: API key is invalid")
+	}
+	if !strings.HasPrefix(apiKey, "sk-ant-") {
+		return nil, fmt.Errorf("claude: API key has invalid format")
 	}
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
 	return &ClaudeBackend{client: client, model: model}, nil
