@@ -7,10 +7,30 @@ prevent prompt-injection attacks via RAG retrieval.
 
 from __future__ import annotations
 
+import datetime
+import json
+import logging
 import os
 import re
 import sys
 from typing import Any
+
+# ---------------------------------------------------------------------------
+# Audit logging — structured JSON events for accountability
+# ---------------------------------------------------------------------------
+
+_audit_logger = logging.getLogger("seed_pinecone.audit")
+_audit_logger.setLevel(logging.INFO)
+if not _audit_logger.handlers:
+    _handler = logging.StreamHandler(sys.stderr)
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    _audit_logger.addHandler(_handler)
+
+
+def _audit(event: str, **fields: Any) -> None:
+    """Emit a structured JSON audit event to stderr."""
+    record = {"timestamp": datetime.datetime.utcnow().isoformat() + "Z", "event": event, **fields}
+    _audit_logger.info(json.dumps(record, default=str))
 
 # ---------------------------------------------------------------------------
 # Content sanitization — must run before any upsert (addresses line 63)
@@ -36,25 +56,34 @@ _INSTRUCTION_PATTERNS = [
 MAX_CONTENT_BYTES = 40_000  # Pinecone metadata limit is 40 KB
 
 
-def sanitize_content(text: str) -> str:
+def sanitize_content(text: str) -> tuple[str, list[str]]:
     """Validate and sanitize document content before ingestion into the vector store.
 
-    - Enforces a maximum byte length.
+    - Enforces a maximum byte length (raises ValueError if exceeded).
     - Strips instruction-like patterns that could enable prompt injection.
 
-    Returns the sanitized string, or raises ValueError if content is invalid.
+    Returns ``(sanitized_text, redacted_patterns)`` where ``redacted_patterns``
+    is a list of regex pattern strings that matched and were redacted.
+    Raises ValueError if content is invalid or empty after sanitization.
     """
     if not isinstance(text, str):
         raise ValueError(f"Content must be a string, got {type(text)}")
 
-    # Enforce byte limit
-    encoded = text.encode("utf-8", errors="replace")
+    # Enforce byte limit — raise rather than silently corrupt
+    encoded = text.encode("utf-8")
     if len(encoded) > MAX_CONTENT_BYTES:
-        text = encoded[:MAX_CONTENT_BYTES].decode("utf-8", errors="replace")
+        raise ValueError(
+            f"Content exceeds maximum allowed size of {MAX_CONTENT_BYTES} bytes "
+            f"({len(encoded)} bytes). Truncate or split the document before ingestion."
+        )
 
-    # Strip instruction-like patterns
+    # Strip instruction-like patterns and track what was redacted
+    redacted_patterns: list[str] = []
     for pattern in _INSTRUCTION_PATTERNS:
-        text = pattern.sub("[REDACTED]", text)
+        new_text, count = pattern.subn("[REDACTED]", text)
+        if count:
+            redacted_patterns.append(pattern.pattern)
+            text = new_text
 
     # Collapse runs of whitespace introduced by redaction
     text = re.sub(r"\n{3,}", "\n\n", text)
@@ -63,7 +92,7 @@ def sanitize_content(text: str) -> str:
     if not text:
         raise ValueError("Content is empty after sanitization")
 
-    return text
+    return text, redacted_patterns
 
 
 # ---------------------------------------------------------------------------
@@ -136,35 +165,58 @@ def seed_documents(
     vectors_to_upsert: list[dict[str, Any]] = []
 
     for doc in documents:
+        doc_id = doc.get("id", "?")
         try:
             # --- line 63: sanitize before any upsert ---
-            clean_text = sanitize_content(doc["text"])
+            clean_text, redacted_patterns = sanitize_content(doc["text"])
         except (ValueError, KeyError) as exc:
-            print(f"[SKIP] Document '{doc.get('id', '?')}' failed sanitization: {exc}")
+            _audit(
+                "document_skipped",
+                doc_id=doc_id,
+                reason=str(exc),
+            )
+            print(f"[SKIP] Document '{doc_id}' failed sanitization: {exc}")
             continue
 
+        if redacted_patterns:
+            _audit(
+                "content_redacted",
+                doc_id=doc_id,
+                original_length=len(doc["text"]),
+                sanitized_length=len(clean_text),
+                redacted_pattern_count=len(redacted_patterns),
+                redacted_patterns=redacted_patterns,
+            )
+
         if dry_run:
-            print(f"[DRY-RUN] Would upsert id={doc['id']!r} ({len(clean_text)} chars)")
+            print(f"[DRY-RUN] Would upsert id={doc_id!r} ({len(clean_text)} chars)")
             continue
 
         embedding = get_embedding(clean_text)
         vectors_to_upsert.append(
             {
-                "id": doc["id"],
+                "id": doc_id,
                 "values": embedding,
-                "metadata": {"text": clean_text, **doc.get("metadata", {})},
+                "metadata": {
+                    "text": clean_text,
+                    "original_length": len(doc["text"]),
+                    "was_sanitized": bool(redacted_patterns),
+                    **doc.get("metadata", {}),
+                },
             }
         )
 
         # Upsert in batches to respect Pinecone request-size limits.
         if len(vectors_to_upsert) >= batch_size:
             index.upsert(vectors=vectors_to_upsert)
+            _audit("batch_upserted", count=len(vectors_to_upsert))
             print(f"[INFO] Upserted batch of {len(vectors_to_upsert)} vectors")
             vectors_to_upsert = []
 
     # Flush remaining vectors
     if vectors_to_upsert:
         index.upsert(vectors=vectors_to_upsert)
+        _audit("batch_upserted", count=len(vectors_to_upsert))
         print(f"[INFO] Upserted final batch of {len(vectors_to_upsert)} vectors")
 
 
@@ -175,7 +227,6 @@ def seed_documents(
 
 def main(argv: list[str] | None = None) -> None:
     import argparse
-    import json
 
     parser = argparse.ArgumentParser(
         description="Seed documents into a Pinecone vector store with sanitization."
