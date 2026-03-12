@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log"
 
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -56,6 +57,7 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 	maxTokens := int64(req.MaxTokens)
 	if maxTokens == 0 {
 		maxTokens = 4096
+		log.Printf("openai: max_tokens not set by caller, applying default of %d to prevent resource exhaustion", maxTokens)
 	}
 	params.MaxCompletionTokens = param.NewOpt(maxTokens)
 
