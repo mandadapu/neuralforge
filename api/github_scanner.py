@@ -8,7 +8,7 @@ from api.config import get_allowed_origins
 app = FastAPI(title="GitHub Scanner API")
 
 # sast_013 fix: restrict CORS to the trusted origins list.
-# Previously this set Access-Control-Allow-Origin: * unconditionally.
+# Previously this set Access-Control-Allow-Origin unconditionally to any origin.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_allowed_origins(),
@@ -21,8 +21,7 @@ app.add_middleware(
 def _cors_origin_header(request: Request, response: Response) -> None:
     """Reflect the request Origin only when it appears in the allowlist.
 
-    sast_013 fix: replaced the unconditional
-        response.headers["Access-Control-Allow-Origin"] = "*"
+    sast_013 fix: replaced the unconditional wildcard origin header
     with an origin-allowlist check.
     """
     allowed = get_allowed_origins()
