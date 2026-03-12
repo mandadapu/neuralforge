@@ -13,6 +13,7 @@ import (
 type AuditingLLM struct {
 	inner    LLM
 	endpoint string // API endpoint for GDPR data-transfer audit
+	region   string // geographic region of the API endpoint for GDPR transfer mechanism verification
 }
 
 func (a *AuditingLLM) Name() string { return a.inner.Name() }
@@ -36,6 +37,7 @@ func (a *AuditingLLM) Complete(ctx context.Context, req CompletionRequest) (Comp
 		slog.Error("llm completion failed",
 			"provider", a.inner.Name(),
 			"endpoint", a.endpoint,
+			"region",   a.region,
 			"req_hash", reqHash,
 			"error", err,
 		)
@@ -44,6 +46,7 @@ func (a *AuditingLLM) Complete(ctx context.Context, req CompletionRequest) (Comp
 	slog.Info("llm completion",
 		"provider",      a.inner.Name(),
 		"endpoint",      a.endpoint,
+		"region",        a.region,
 		"model",         resp.Model,
 		"input_tokens",  resp.InputTokens,
 		"output_tokens", resp.OutputTokens,
@@ -58,6 +61,7 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 	slog.Info("llm stream_complete start",
 		"provider", a.inner.Name(),
 		"endpoint", a.endpoint,
+		"region",   a.region,
 		"req_hash", reqHash,
 	)
 	ch, err := a.inner.StreamComplete(ctx, req)
@@ -65,6 +69,7 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 		slog.Error("llm stream_complete failed",
 			"provider", a.inner.Name(),
 			"endpoint", a.endpoint,
+			"region",   a.region,
 			"req_hash", reqHash,
 			"error", err,
 		)
@@ -73,14 +78,17 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 	out := make(chan StreamChunk)
 	go func() {
 		defer close(out)
-		var chunkCount int
+		var chunkCount, errorCount int
 		for chunk := range ch {
 			if chunk.Error != nil {
+				errorCount++
 				slog.Error("llm stream_complete chunk error",
-					"provider", a.inner.Name(),
-					"endpoint", a.endpoint,
-					"req_hash", reqHash,
-					"error", chunk.Error,
+					"provider",    a.inner.Name(),
+					"endpoint",    a.endpoint,
+					"region",      a.region,
+					"req_hash",    reqHash,
+					"error_count", errorCount,
+					"error",       chunk.Error,
 				)
 			}
 			chunkCount++
@@ -89,8 +97,10 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 		slog.Info("llm stream_complete done",
 			"provider",    a.inner.Name(),
 			"endpoint",    a.endpoint,
+			"region",      a.region,
 			"req_hash",    reqHash,
 			"chunk_count", chunkCount,
+			"error_count", errorCount,
 		)
 	}()
 	return out, nil
@@ -101,17 +111,20 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 func NewFactory(provider, apiKey, model string) (LLM, error) {
 	var inner LLM
 	var endpoint string
+	var region string
 	switch provider {
 	case "openai":
 		inner = NewOpenAI(apiKey, model)
 		endpoint = "api.openai.com"
+		region = "us-east-1" // OpenAI US datacenter; relevant for GDPR transfer mechanism
 	case "claude":
 		inner = NewClaude(apiKey, model)
 		endpoint = "api.anthropic.com"
+		region = "us-east-1" // Anthropic US datacenter; relevant for GDPR transfer mechanism
 	case "":
 		return nil, fmt.Errorf("LLM provider must be specified; got empty string")
 	default:
 		return nil, fmt.Errorf("unknown LLM provider: %q", provider)
 	}
-	return &AuditingLLM{inner: inner, endpoint: endpoint}, nil
+	return &AuditingLLM{inner: inner, endpoint: endpoint, region: region}, nil
 }
