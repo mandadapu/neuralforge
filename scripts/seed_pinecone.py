@@ -245,7 +245,7 @@ def main() -> None:
     logging.info(
         "Rejection metrics rule_version=%s %s",
         _RULE_VERSION,
-        " ".join(f"{k}={v}" for k, v in _rejection_counts.items() if v > 0),
+        " ".join(f"{k}={v}" for k, v in _rejection_counts.items()),
     )
 
 
