@@ -8,7 +8,7 @@ require (
 	github.com/openai/openai-go v1.12.0
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.11.1
-	gopkg.in/yaml.v3 v3.0.1
+	gopkg.in/yaml.v3 v3.0.1 // pinned: v3.0.1 fixes OSV-GO-2022-0603 (YAML bomb DoS)
 	k8s.io/api v0.35.2
 	k8s.io/apimachinery v0.35.2
 	k8s.io/client-go v0.35.2
