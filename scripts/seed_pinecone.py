@@ -46,16 +46,35 @@ STORE_TEXT_IN_METADATA: bool = os.environ.get("STORE_TEXT_IN_METADATA", "false")
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# Dedicated audit logger — wire a tamper-evident handler (e.g. a SIEM sink or
-# an append-only log file) in production.  Uses ISO-8601 timestamps.
-_audit_handler = logging.StreamHandler()
-_audit_handler.setFormatter(
-    logging.Formatter("%(asctime)s AUDIT %(levelname)s %(message)s", datefmt="%Y-%m-%dT%H:%M:%S%z")
-)
+# ---------------------------------------------------------------------------
+# Tamper-evident audit logger with ISO-8601 timestamps.
+#
+# By default logs to stderr.  Set AUDIT_LOG_FILE to an absolute path to
+# write to an append-only file instead (recommended for production).  In
+# regulated environments wire an additional handler that ships records to a
+# SIEM or write-once object store.
+# ---------------------------------------------------------------------------
+_AUDIT_LOG_FILE: str = os.environ.get("AUDIT_LOG_FILE", "")
+
 audit_logger = logging.getLogger("seed_pinecone.audit")
-audit_logger.addHandler(_audit_handler)
 audit_logger.setLevel(logging.INFO)
 audit_logger.propagate = False
+
+_audit_fmt = logging.Formatter(
+    "%(asctime)s AUDIT %(levelname)s %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S%z",
+)
+
+if _AUDIT_LOG_FILE:
+    # Append-only file handler — O_APPEND is atomic on POSIX; pair with
+    # logrotate / log-shipping agent for tamper-evidence in production.
+    _file_handler = logging.FileHandler(_AUDIT_LOG_FILE, mode="a", encoding="utf-8", delay=False)
+    _file_handler.setFormatter(_audit_fmt)
+    audit_logger.addHandler(_file_handler)
+else:
+    _stream_handler = logging.StreamHandler()
+    _stream_handler.setFormatter(_audit_fmt)
+    audit_logger.addHandler(_stream_handler)
 
 # ---------------------------------------------------------------------------
 # Injection-pattern detection (rag_002 remediation)
