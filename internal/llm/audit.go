@@ -62,6 +62,7 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 		"provider", a.inner.Name(),
 		"endpoint", a.endpoint,
 		"region",   a.region,
+		"model",    req.Model,
 		"req_hash", reqHash,
 	)
 	ch, err := a.inner.StreamComplete(ctx, req)
@@ -70,15 +71,16 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 			"provider", a.inner.Name(),
 			"endpoint", a.endpoint,
 			"region",   a.region,
+			"model",    req.Model,
 			"req_hash", reqHash,
-			"error", err,
+			"error",    err,
 		)
 		return nil, err
 	}
 	out := make(chan StreamChunk)
 	go func() {
 		defer close(out)
-		var chunkCount, errorCount int
+		var chunkCount, errorCount, contentLen int
 		for chunk := range ch {
 			if chunk.Error != nil {
 				errorCount++
@@ -92,15 +94,18 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 				)
 			}
 			chunkCount++
+			contentLen += len(chunk.Content)
 			out <- chunk
 		}
 		slog.Info("llm stream_complete done",
-			"provider",    a.inner.Name(),
-			"endpoint",    a.endpoint,
-			"region",      a.region,
-			"req_hash",    reqHash,
-			"chunk_count", chunkCount,
-			"error_count", errorCount,
+			"provider",       a.inner.Name(),
+			"endpoint",       a.endpoint,
+			"region",         a.region,
+			"model",          req.Model,
+			"req_hash",       reqHash,
+			"chunk_count",    chunkCount,
+			"error_count",    errorCount,
+			"content_length", contentLen,
 		)
 	}()
 	return out, nil

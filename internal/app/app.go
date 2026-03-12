@@ -173,9 +173,10 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 func (a *App) buildJobHandler() worker.JobHandler {
 	// Select the correct provider config and create an audited LLM backend.
 	var providerCfg config.ProviderConfig
-	if a.cfg.LLM.DefaultProvider == "openai" {
+	switch a.cfg.LLM.DefaultProvider {
+	case "openai":
 		providerCfg = a.cfg.LLM.OpenAI
-	} else {
+	case "claude":
 		providerCfg = a.cfg.LLM.Claude
 	}
 	backend, err := llm.NewFactory(a.cfg.LLM.DefaultProvider, providerCfg.APIKey, providerCfg.Model)
