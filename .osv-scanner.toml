@@ -1,3 +1,9 @@
 [[IgnoredVulns]]
 id = "GHSA-2g4f-4pwh-qvx6"
-reason = "frontend/package-lock.json does not exist in this repository. This is a pure Go project with no npm artifacts. The finding is stale and not applicable to the current codebase."
+reason = """NOT APPLICABLE — verified 2026-03-12. \
+Evidence: (1) frontend/package-lock.json does not exist at HEAD (confirmed via `git ls-files frontend/`); \
+(2) this repository contains no JavaScript/npm artifacts — it is a pure Go project (see go.mod); \
+(3) GHSA-2g4f-4pwh-qvx6 is a prototype-pollution vulnerability in the npm package `ajv` <=6.12.6, which is irrelevant without a Node.js dependency tree. \
+Risk acceptance: no npm code paths exist to exploit this advisory. \
+Re-evaluation trigger: if a frontend/ directory is added in future, remove this suppression and run `npm audit` to assess applicability. \
+Review date: 2027-03-12 (annual)."""
