@@ -1,1 +1,13 @@
-requests>=2.31.0
+# nw-agent runtime HTTP dependency
+# Business justification: requests is used by the NeuralWarden agent runner for
+# outbound HTTP calls to the GitHub API and internal NeuralWarden control plane only.
+# No personal, PHI, or PCI data is transmitted; all requests are authenticated via
+# GitHub App tokens scoped to this repository. Egress is limited to github.com and
+# internal NeuralWarden endpoints.
+#
+# Pinned to exact version to resolve PYSEC-2023-74 (CVE-2023-32681):
+# requests <2.31.0 leaks Proxy-Authorization headers on cross-host redirects.
+# Hashes verified against PyPI for supply-chain integrity.
+requests==2.31.0 \
+    --hash=sha256:58cd2187423839a5efee180dccc72a1ac3b04de59c4f4e47d87ff8bba48bc48c \
+    --hash=sha256:942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1
