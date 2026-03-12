@@ -24,11 +24,12 @@ import (
 
 // App wires together the store, worker pool, and HTTP server.
 type App struct {
-	cfg    config.Config
-	store  store.Store
-	pool   *worker.Pool
-	server *http.Server
-	ghApp  *ghappauth.App
+	cfg        config.Config
+	store      store.Store
+	pool       *worker.Pool
+	server     *http.Server
+	ghApp      *ghappauth.App
+	llmBackend llm.LLM
 }
 
 // New creates a new App, opens the SQLite store, and runs migrations.
@@ -60,6 +61,24 @@ func New(cfg config.Config) (*App, error) {
 		}
 		a.ghApp = ghApp
 	}
+
+	provider := cfg.LLM.DefaultProvider
+	var apiKey, model string
+	switch provider {
+	case "openai":
+		apiKey = cfg.LLM.OpenAI.APIKey
+		model = cfg.LLM.OpenAI.Model
+	default:
+		provider = "claude"
+		apiKey = cfg.LLM.Claude.APIKey
+		model = cfg.LLM.Claude.Model
+	}
+	backend, err := llm.New(provider, apiKey, model)
+	if err != nil {
+		s.Close()
+		return nil, fmt.Errorf("create llm backend: %w", err)
+	}
+	a.llmBackend = backend
 
 	handler := a.buildJobHandler()
 	a.pool = worker.NewPool(cfg.Workers, s, handler)
@@ -168,17 +187,10 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 	}
 }
 
-// buildJobHandler creates the LLM backend and executor, then returns a handler
-// that clones the repo, builds pipeline state, and runs the pipeline engine.
+// buildJobHandler creates the executor, then returns a handler that clones the
+// repo, builds pipeline state, and runs the pipeline engine.
 func (a *App) buildJobHandler() worker.JobHandler {
-	// Create LLM backend based on config.
-	var backend llm.LLM
-	switch a.cfg.LLM.DefaultProvider {
-	case "openai":
-		backend = llm.NewOpenAI(a.cfg.LLM.OpenAI.APIKey, a.cfg.LLM.OpenAI.Model)
-	default:
-		backend = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
-	}
+	backend := a.llmBackend
 
 	// Create executor based on config.
 	var exec executor.Executor
