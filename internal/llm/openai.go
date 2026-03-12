@@ -62,7 +62,7 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 		params.Temperature = param.NewOpt(req.Temperature)
 	}
 
-	slog.Info("llm call", "backend", "openai", "agent", req.AgentName, "model", model)
+	slog.Info("llm call", "backend", "openai", "agent", sanitizeAgentName(req.AgentName), "model", model, "data_classification", "non-pii")
 
 	resp, err := withRetry(ctx, DefaultRetryConfig, func() (*openai.ChatCompletion, error) {
 		return o.client.Chat.Completions.New(ctx, params)
