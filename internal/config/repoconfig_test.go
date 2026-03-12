@@ -45,3 +45,12 @@ func TestParseRepoConfigDefaults(t *testing.T) {
 	assert.Equal(t, "neuralforge", cfg.Trigger.Label)
 	assert.Equal(t, 5.0, cfg.Limits.BudgetUSD)
 }
+
+func TestParseRepoConfigSizeLimit(t *testing.T) {
+	// Inputs exceeding maxRepoConfigSize must be rejected to prevent DoS via
+	// crafted YAML documents (OSV-GO-2022-0603 / CVE-2022-28948).
+	oversized := make([]byte, maxRepoConfigSize+1)
+	_, err := ParseRepoConfig(oversized)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "exceeds maximum allowed size")
+}
