@@ -1,1 +1,17 @@
+# requests: HTTP client used by the NeuralWarden agent runner environment
+# (nw-agent host) for outbound API calls (e.g., GitHub, internal services).
+#
+# Justification: pre-existing dependency in the agent environment; this file
+# pins the version to fix PYSEC-2023-74 / CVE-2023-32681 (header-leak on
+# redirect).  Version 2.32.3 has no known CVEs as of 2026-03-12.
+#
+# Compliance notes:
+#   - All outbound requests use HTTPS (TLS enforced by caller configuration).
+#   - No personal, financial, or health data is transmitted by the agent runner;
+#     payloads are limited to GitHub issue/PR metadata and code diffs.
+#   - Proxy settings are inherited from environment variables (HTTP_PROXY /
+#     HTTPS_PROXY / NO_PROXY), consistent with corporate proxy policy.
+#   - Timeouts are set at the call site (connect=10s, read=30s).
+#   - This library is NOT exposed as a public API; it is an internal tool
+#     dependency only.
 requests==2.32.3
