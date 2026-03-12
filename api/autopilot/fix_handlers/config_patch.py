@@ -8,7 +8,7 @@ restricted, environment-variable-driven allowlist.
 import os
 import copy
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,14 @@ logger = logging.getLogger(__name__)
 _raw_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "")
 ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
-# line 24 — cors_config uses the env-var-driven list, not a wildcard
+if not ALLOWED_ORIGINS:
+    logger.warning(
+        "CORS_ALLOWED_ORIGINS is not set or empty — all cross-origin requests will be rejected"
+    )
+else:
+    logger.info("CORS allowed origins: %s", ALLOWED_ORIGINS)
+
+# cors_config uses the env-var-driven list, not a wildcard
 cors_config: Dict[str, Any] = {
     "origins": ALLOWED_ORIGINS,
     "allow_methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -63,16 +70,28 @@ def apply_cors_patch(service_config: Dict[str, Any]) -> Dict[str, Any]:
     """
     patched = _patch_cors_in_dict(service_config)
 
-    # Validate: no wildcard remaining
-    import json
-    serialized = json.dumps(patched)
-    if '"*"' in serialized and any(k in serialized for k in ('"origins"', '"allow_origins"')):
-        raise ValueError(
-            "Patched config still contains a wildcard CORS origin. "
-            "Set CORS_ALLOWED_ORIGINS to a comma-separated list of trusted origins."
-        )
+    # Validate: no wildcard remaining — walk the structure directly
+    _assert_no_wildcard_origin(patched)
 
     return patched
+
+
+def _assert_no_wildcard_origin(cfg: Any, path: str = "") -> None:
+    """Raise ValueError if any CORS origin key in *cfg* still holds a wildcard value."""
+    if isinstance(cfg, dict):
+        for key, value in cfg.items():
+            key_path = f"{path}.{key}" if path else key
+            if key in ("origins", "allow_origins"):
+                if value == "*" or value == ["*"]:
+                    raise ValueError(
+                        f"Patched config still contains a wildcard CORS origin at '{key_path}'. "
+                        "Set CORS_ALLOWED_ORIGINS to a comma-separated list of trusted origins."
+                    )
+            else:
+                _assert_no_wildcard_origin(value, key_path)
+    elif isinstance(cfg, list):
+        for i, item in enumerate(cfg):
+            _assert_no_wildcard_origin(item, f"{path}[{i}]")
 
 
 def build_cors_middleware_config() -> Dict[str, Any]:

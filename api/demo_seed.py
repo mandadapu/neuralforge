@@ -2,6 +2,7 @@
 demo_seed.py — Demo data seeding API for NeuralWarden.
 """
 import os
+import secrets
 import logging
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -17,6 +18,13 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _raw_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "")
 ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+
+if not ALLOWED_ORIGINS:
+    logger.warning(
+        "CORS_ALLOWED_ORIGINS is not set or empty — all cross-origin requests will be rejected"
+    )
+else:
+    logger.info("CORS allowed origins: %s", ALLOWED_ORIGINS)
 
 app = Flask(__name__)
 
@@ -78,7 +86,7 @@ def seed_endpoint():
     """Trigger demo data seeding (internal use only)."""
     token = request.headers.get("X-Seed-Token", "")
     expected = os.environ.get("SEED_TOKEN", "")
-    if not expected or token != expected:
+    if not expected or not secrets.compare_digest(token.encode(), expected.encode()):
         return jsonify({"error": "unauthorized"}), 401
     return jsonify({"status": "ok", "seeded": True}), 200
 
