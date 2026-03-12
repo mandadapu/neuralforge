@@ -40,6 +40,11 @@ class ComplianceHTTPClient:
     data_type : str
         Classification of the data being transmitted (e.g. "public",
         "internal", "pii", "phi", "pci").  Required for audit logging.
+    user_context : str, optional
+        Identifier for the user or service principal initiating requests
+        (e.g. service account name, user ID).  Captured in every audit log
+        entry to satisfy SOX change-management and HIPAA access-log
+        requirements for attributing data access to an identity.
     timeout : tuple[int, int]
         (connect_s, read_s) timeout pair.  Defaults to (5, 30).
     """
@@ -47,11 +52,13 @@ class ComplianceHTTPClient:
     def __init__(
         self,
         data_type: str,
+        user_context: str = "unknown",
         timeout: tuple = _DEFAULT_TIMEOUT,
     ) -> None:
         if not data_type:
             raise ValueError("data_type must be specified for compliance audit logging")
         self._data_type = data_type
+        self._user_context = user_context or "unknown"
         self._timeout = timeout
         self._session = requests.Session()
         # Certificate verification must always be enabled.
@@ -121,8 +128,9 @@ class ComplianceHTTPClient:
     def _audit_log(self, method: str, url: str) -> None:
         """Emit a structured audit entry for SOX/HIPAA access logging."""
         logger.info(
-            "http_request method=%s url=%s data_type=%s",
+            "http_request method=%s url=%s data_type=%s user_context=%s",
             method,
             url,
             self._data_type,
+            self._user_context,
         )
