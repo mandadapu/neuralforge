@@ -17,8 +17,8 @@ type Message struct {
 
 type CompletionRequest struct {
 	// AgentName identifies the pipeline stage for local audit logging only.
-	// It is NOT transmitted to external LLM providers (Anthropic, OpenAI).
-	AgentName   string
+	// json:"-" ensures it is never serialized and cannot be transmitted to external LLM providers.
+	AgentName string `json:"-"`
 	System      string    `json:"system"`
 	Messages    []Message `json:"messages"`
 	Model       string    `json:"model"`
