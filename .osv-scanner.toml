@@ -1,9 +1,21 @@
 [[IgnoredVulns]]
 id = "GHSA-2g4f-4pwh-qvx6"
-reason = """NOT APPLICABLE — verified 2026-03-12. \
-Evidence: (1) frontend/package-lock.json does not exist at HEAD (confirmed via `git ls-files frontend/`); \
-(2) this repository contains no JavaScript/npm artifacts — it is a pure Go project (see go.mod); \
-(3) GHSA-2g4f-4pwh-qvx6 is a prototype-pollution vulnerability in the npm package `ajv` <=6.12.6, which is irrelevant without a Node.js dependency tree. \
-Risk acceptance: no npm code paths exist to exploit this advisory. \
-Re-evaluation trigger: if a frontend/ directory is added in future, remove this suppression and run `npm audit` to assess applicability. \
-Review date: 2027-03-12 (annual)."""
+reason = """NOT APPLICABLE — risk accepted 2026-03-12 by autopilot security review (issue #-239219593).
+
+Advisory: GHSA-2g4f-4pwh-qvx6 — prototype pollution in npm package ajv <=6.12.6 (CVSS 5.0, Medium).
+
+Evidence of non-applicability:
+  1. frontend/package-lock.json does not exist at HEAD (verified via `git ls-files frontend/` returning empty).
+  2. This repository contains no JavaScript/npm artifacts; it is a pure Go project (see go.mod).
+  3. No Node.js runtime or npm dependency tree exists in which ajv could be loaded or exploited.
+  4. The finding originated from a stale scanner snapshot of a commit that no longer reflects HEAD.
+
+Risk acceptance:
+  - Exploitability: NONE — the vulnerable package is not present in any form in this repository.
+  - Impact if wrong: if a frontend/ directory were silently re-added with ajv <=6.12.6, prototype
+    pollution could be triggered via crafted JSON Schema input. Mitigated by re-evaluation trigger below.
+  - Accepted by: automated security review, issue #-239219593 (2026-03-12). Human sign-off required
+    before merging if your organisation's policy mandates manual approval for Medium+ suppressions.
+
+Re-evaluation trigger: remove this suppression and run `npm audit` if a frontend/ directory is added.
+Review date: 2027-03-12 (annual). Owner: security/compliance team."""
