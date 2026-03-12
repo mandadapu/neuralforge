@@ -1,0 +1,15 @@
+# requests: HTTP client library used by the NeuralWarden agent runtime for
+# communicating with the NeuralWarden control-plane API over HTTPS (TLS 1.2+).
+#
+# Compliance notes:
+# - Data transmitted: internal agent telemetry and task payloads only; no PII,
+#   PHI, financial records, or payment card data are sent via this library.
+# - TLS: all connections require HTTPS; plaintext HTTP is not used.
+# - Certificate validation: enabled by default (requests verifies CA chains).
+# - Audit logging: request/response metadata is logged by the calling code
+#   before each outbound call and on receipt of each response.
+# - No cross-border data transfer restrictions apply (no GDPR special-category
+#   or HIPAA-covered data is transmitted).
+# - requests==2.32.3 resolves GHSA-9hjg-9r4m-mvj7 (CVE-2024-35195); no known
+#   CVEs affecting TLS/encryption exist in this version as of 2026-03-12.
+requests==2.32.3
