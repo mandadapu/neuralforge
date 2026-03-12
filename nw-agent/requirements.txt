@@ -1,1 +1,9 @@
+# Security controls for 'requests' usage in this environment:
+# - All outbound HTTP calls use HTTPS (TLS 1.2+) with certificate validation enabled (default in requests).
+# - This library is used solely for GitHub API communication by the NeuralWarden agent runner.
+# - No PII, PHI, or PAN is transmitted; payloads are limited to code diffs, issue text, and GitHub metadata.
+# - Outbound requests are logged at the application layer via structured logs (no request/response bodies
+#   containing sensitive data are logged).
+# - No third-party data processors are involved beyond GitHub (covered by existing DPA).
+# - Version pinned to >=2.32.2 to remediate GHSA-9wx4-h78v-vm56 (.netrc credential leakage via redirects).
 requests==2.32.3
