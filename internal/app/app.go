@@ -180,9 +180,8 @@ func (a *App) buildJobHandler() worker.JobHandler {
 	}
 	backend, err := llm.New(a.cfg.LLM.DefaultProvider, apiKey, model)
 	if err != nil {
-		// err is only returned for truly unknown providers; safe to panic at startup
-		slog.Error("failed to create llm backend", "provider", a.cfg.LLM.DefaultProvider, "error", err)
-		return nil
+		// Unknown provider is a fatal configuration error; panic to surface it immediately at startup.
+		panic(fmt.Sprintf("failed to create llm backend: %v", err))
 	}
 
 	// Create executor based on config.
