@@ -1,6 +1,15 @@
 package config
 
-import "gopkg.in/yaml.v3"
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
+
+// maxRepoConfigSize guards against CVE-2022-28948 / GHSA-hp87-p4gw-j4gq:
+// a stack overflow in gopkg.in/yaml.v3 triggered by deeply-nested inputs.
+// Reject payloads larger than 1 MiB before they reach the YAML decoder.
+const maxRepoConfigSize = 1 * 1024 * 1024 // 1 MiB
 
 type RepoConfig struct {
 	Trigger  TriggerConfig  `yaml:"trigger"`
@@ -64,6 +73,10 @@ func ParseRepoConfig(data []byte) (RepoConfig, error) {
 
 	if len(data) == 0 {
 		return cfg, nil
+	}
+
+	if len(data) > maxRepoConfigSize {
+		return cfg, fmt.Errorf("repo config exceeds maximum allowed size of %d bytes", maxRepoConfigSize)
 	}
 
 	var wrapper repoConfigWrapper
