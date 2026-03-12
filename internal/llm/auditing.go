@@ -24,12 +24,26 @@ func correlationIDFromContext(ctx context.Context) string {
 	return ""
 }
 
+// auditDataClassification is the data classification tag added to every audit
+// event for GDPR Article 30 processing records.
+const auditDataClassification = "internal"
+
+// auditEventType is the event type tag for LLM call audit events. Log sinks
+// should route entries with this field to an immutable (tamper-evident) store
+// to satisfy SOX/HIPAA audit-trail requirements.
+const auditEventType = "llm_call"
+
 // AuditingLLM wraps any LLM backend and emits structured audit log entries
 // for every completion call, capturing provider, model, token usage, latency,
 // correlation ID, and any error.
 //
-// Prompt text and response content are intentionally excluded from all log
-// fields to prevent inadvertent capture of PII/PHI in log sinks.
+// Security controls:
+//   - Prompt text and response content are intentionally excluded from all log
+//     fields to prevent inadvertent capture of PII/PHI in log sinks.
+//   - Every event carries data_classification and audit_event_type fields so
+//     log routers can forward to an immutable audit store (WORM/CloudTrail).
+//   - StreamComplete token/cost metrics are unavailable at the protocol level;
+//     chunk count and latency are logged as the best available proxy.
 type AuditingLLM struct {
 	inner LLM
 }
@@ -49,6 +63,8 @@ func (a *AuditingLLM) Complete(ctx context.Context, req CompletionRequest) (Comp
 	corrID := correlationIDFromContext(ctx)
 	if err != nil {
 		slog.Error("llm complete",
+			"audit_event_type", auditEventType,
+			"data_classification", auditDataClassification,
 			"provider", a.inner.Name(),
 			"model", req.Model,
 			"latency_ms", latency.Milliseconds(),
@@ -57,6 +73,8 @@ func (a *AuditingLLM) Complete(ctx context.Context, req CompletionRequest) (Comp
 		)
 	} else {
 		slog.Info("llm complete",
+			"audit_event_type", auditEventType,
+			"data_classification", auditDataClassification,
 			"provider", a.inner.Name(),
 			"model", resp.Model,
 			"input_tokens", resp.InputTokens,
@@ -78,6 +96,8 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 	corrID := correlationIDFromContext(ctx)
 
 	slog.Info("llm stream_complete start",
+		"audit_event_type", auditEventType,
+		"data_classification", auditDataClassification,
 		"provider", a.inner.Name(),
 		"model", req.Model,
 		"correlation_id", corrID,
@@ -86,6 +106,8 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 	innerCh, err := a.inner.StreamComplete(ctx, req)
 	if err != nil {
 		slog.Error("llm stream_complete",
+			"audit_event_type", auditEventType,
+			"data_classification", auditDataClassification,
 			"provider", a.inner.Name(),
 			"model", req.Model,
 			"latency_ms", time.Since(start).Milliseconds(),
@@ -110,6 +132,8 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 		latency := time.Since(start)
 		if finalErr != nil {
 			slog.Error("llm stream_complete",
+				"audit_event_type", auditEventType,
+				"data_classification", auditDataClassification,
 				"provider", a.inner.Name(),
 				"model", req.Model,
 				"chunks", chunks,
@@ -119,6 +143,8 @@ func (a *AuditingLLM) StreamComplete(ctx context.Context, req CompletionRequest)
 			)
 		} else {
 			slog.Info("llm stream_complete",
+				"audit_event_type", auditEventType,
+				"data_classification", auditDataClassification,
 				"provider", a.inner.Name(),
 				"model", req.Model,
 				"chunks", chunks,
