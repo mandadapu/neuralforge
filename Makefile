@@ -1,4 +1,4 @@
-.PHONY: build test lint clean
+.PHONY: build test lint clean vuln
 
 BINARY := neuralforge
 VERSION := 0.1.0-dev
@@ -14,3 +14,6 @@ lint:
 
 clean:
 	rm -rf bin/
+
+vuln:
+	govulncheck ./...
