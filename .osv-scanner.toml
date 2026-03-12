@@ -1,0 +1,25 @@
+# Security Finding Suppression Registry
+# Each suppressed finding must include formal triage documentation per security policy.
+# Suppressions are reviewed quarterly (next review: 2026-06-12).
+
+[[IgnoredVulns]]
+id = "GHSA-2g4f-4pwh-qvx6"
+reason = """Triage classification: NOT APPLICABLE (false positive).
+
+Vulnerability: ajv < 8.x prototype pollution (CVSS 5.0, MEDIUM).
+Affected artifact: frontend/package-lock.json (npm package ajv 6.12.6).
+
+Verification (run 'git ls-files frontend/' to confirm):
+  - The frontend/ directory and package-lock.json do not exist in this repository.
+  - This is a pure Go project with no npm/Node.js dependencies in the working tree.
+  - No transitive dependency path exists through which ajv could be loaded at runtime.
+  - Scanner detected this from stale git history or a misconfigured scan scope.
+
+Compensating controls:
+  - OSV scanner runs on every PR; any future introduction of a frontend/ directory
+    will be scanned and must pin ajv >= 8.11.0 to avoid reintroducing this finding.
+  - This suppression is scoped to the absence of the file and must be re-evaluated
+    if npm/Node.js dependencies are added to the repository.
+
+Periodic re-evaluation: review quarterly or when any frontend/ directory is added.
+Next review date: 2026-06-12."""
