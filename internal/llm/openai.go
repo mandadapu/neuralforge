@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log"
 
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -50,7 +51,10 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 
 	maxTokens := int64(req.MaxTokens)
 	if maxTokens == 0 {
+		// Default to 4096 to match ClaudeBackend and prevent resource exhaustion
+		// when callers omit MaxTokens. Logged for audit/cost-control visibility.
 		maxTokens = 4096
+		log.Printf("openai: req.MaxTokens not set; applying default max_tokens=%d (model=%s)", maxTokens, model)
 	}
 
 	params := openai.ChatCompletionNewParams{
