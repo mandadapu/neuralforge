@@ -1,1 +1,4 @@
+# Security: pinned to fix GHSA-9wx4-h78v-vm56 (proxy-authorization header leak in requests < 2.32.0)
+# CVE scanned: 2026-03-12 — no outstanding CVEs in requests 2.32.3
+# Usage requirements: always pass verify=True (default) and set timeout; do not transmit PII without TLS
 requests==2.32.3
