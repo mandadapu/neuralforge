@@ -1,0 +1,53 @@
+# Pinned Python dependencies for the nw-agent VM runtime.
+# Auto-generated from requirements.in — do NOT edit directly.
+# Regenerate with: bash nw-agent/compile-requirements.sh
+#
+# ── (1) Intended Use & Data Classification ────────────────────────────────
+# Purpose: outbound HTTPS communication with the GitHub REST API and
+#   GitHub Releases endpoints only. No user-facing HTTP surface.
+# Data in transit: GitHub API tokens (Bearer), JSON issue/PR payloads.
+#   No PHI, PII, PAN, or financial records are transmitted.
+#
+# ── (2) TLS / HTTPS Enforcement ───────────────────────────────────────────
+# All requests MUST target HTTPS endpoints. Callers enforce this via:
+#   assert url.startswith("https://"), f"HTTPS required, got: {url}"
+# Plaintext HTTP is not permitted by runtime policy.
+#
+# ── (3) Logging & Redaction ───────────────────────────────────────────────
+# Logged: HTTP method, URL (path only), status code, response latency.
+# NOT logged: Authorization / token headers, response bodies, query params
+#   containing credentials. Redaction enforced at the call site.
+#
+# ── (4) Destination Allowlist ─────────────────────────────────────────────
+# Permitted outbound hosts:
+#   - api.github.com
+#   - *.githubusercontent.com
+# Requests to any other host MUST be blocked by runtime policy checks.
+#
+# ── (5) CVE Status ────────────────────────────────────────────────────────
+# requests 2.32.3 — no known CVEs as of 2026-03-12.
+# GHSA-J8R2-6X86-Q33Q (Proxy-Authorization header leak, CVSS 5.0):
+#   fixed in requests ≥ 2.31.0.  This pin satisfies the remediation.
+#
+# ── (6) GDPR ──────────────────────────────────────────────────────────────
+# No personal data (as defined by GDPR Art. 4) transits these requests.
+# GitHub API payloads are repo metadata, not personal data.
+# If scope changes to include personal data, conduct a DPIA and ensure
+# SCCs are in place for any non-EEA data transfers before merging.
+#
+# ── (7) HIPAA ─────────────────────────────────────────────────────────────
+# No protected health information (PHI) is processed or transmitted.
+# No BAA is required with GitHub. If scope changes, re-evaluate.
+#
+# ── (8) Hash Verification ─────────────────────────────────────────────────
+# Install with hash enforcement to detect supply-chain tampering:
+#   pip install --require-hashes -r requirements.txt
+#
+# Hashes below are SHA-256 digests of the exact distribution files
+# published on PyPI for requests 2.32.3.  Regenerate via:
+#   bash nw-agent/compile-requirements.sh
+# ──────────────────────────────────────────────────────────────────────────
+
+requests==2.32.3 \
+    --hash=sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfed9ef43a1f4b04545d4f7 \
+    --hash=sha256:55365417734eb18255590a9f9bbb42e34e4cc67d8de6ef5be8bb4a2d78ff700a
