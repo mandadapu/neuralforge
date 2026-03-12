@@ -1,6 +1,14 @@
 package config
 
-import "gopkg.in/yaml.v3"
+import (
+	"fmt"
+
+	"gopkg.in/yaml.v3"
+)
+
+// maxRepoConfigSize limits YAML input to guard against DoS via crafted documents
+// (mitigates OSV-GO-2022-0603 / CVE-2022-28948).
+const maxRepoConfigSize = 1 << 20 // 1 MiB
 
 type RepoConfig struct {
 	Trigger  TriggerConfig  `yaml:"trigger"`
@@ -64,6 +72,10 @@ func ParseRepoConfig(data []byte) (RepoConfig, error) {
 
 	if len(data) == 0 {
 		return cfg, nil
+	}
+
+	if len(data) > maxRepoConfigSize {
+		return cfg, fmt.Errorf("config: YAML input exceeds maximum allowed size of %d bytes", maxRepoConfigSize)
 	}
 
 	var wrapper repoConfigWrapper
