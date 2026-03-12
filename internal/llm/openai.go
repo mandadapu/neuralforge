@@ -51,10 +51,18 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 
 	maxTokens := int64(req.MaxTokens)
 	if maxTokens == 0 {
-		// Default to 4096 to match ClaudeBackend and prevent resource exhaustion
-		// when callers omit MaxTokens. Logged for audit/cost-control visibility.
+		// Default to 4096 tokens when the caller does not specify a limit.
+		// Rationale (llm_004 / data-minimization compliance):
+		//   - An unbounded request (MaxTokens=0) risks resource exhaustion and
+		//     may extract more data than necessary, violating data-minimization
+		//     principles (GDPR Art. 5(1)(c)) and HIPAA minimum-necessary rules.
+		//   - 4096 matches the ClaudeBackend default and is the established
+		//     pipeline-wide ceiling already set explicitly in every pipeline stage.
+		//   - Callers that require a higher or lower limit must set req.MaxTokens
+		//     explicitly; 0 is not a supported opt-out for "no limit".
+		// Logged here for SOX cost-control audit trail.
 		maxTokens = 4096
-		log.Printf("openai: req.MaxTokens not set; applying default max_tokens=%d (model=%s)", maxTokens, model)
+		log.Printf("openai: max_tokens defaulted to %d for model=%s (caller did not set MaxTokens; explicit limit required to override)", maxTokens, model)
 	}
 
 	params := openai.ChatCompletionNewParams{
