@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -59,11 +60,43 @@ func TestAuditedLLM_Complete_error(t *testing.T) {
 }
 
 func TestAuditedLLM_StreamComplete(t *testing.T) {
-	ch := make(chan StreamChunk)
+	ch := make(chan StreamChunk, 2)
+	ch <- StreamChunk{Content: "hello "}
+	ch <- StreamChunk{Content: "world", Done: true}
+	close(ch)
+
 	mock := &mockLLM{name: "claude", streamCh: ch}
 	audited := NewAudited(mock)
 
 	got, err := audited.StreamComplete(context.Background(), CompletionRequest{})
 	require.NoError(t, err)
-	assert.Equal(t, ch, got)
+
+	var chunks []StreamChunk
+	for c := range got {
+		chunks = append(chunks, c)
+	}
+	require.Len(t, chunks, 2)
+	assert.Equal(t, "hello ", chunks[0].Content)
+	assert.True(t, chunks[1].Done)
+}
+
+func TestAuditedLLM_StreamComplete_error(t *testing.T) {
+	sentinel := errors.New("stream error")
+	mock := &mockLLM{name: "claude", streamErr: sentinel}
+	audited := NewAudited(mock)
+
+	_, err := audited.StreamComplete(context.Background(), CompletionRequest{})
+	assert.ErrorIs(t, err, sentinel)
+}
+
+func TestSanitizeError_short(t *testing.T) {
+	err := errors.New("short error")
+	assert.Equal(t, "short error", sanitizeError(err))
+}
+
+func TestSanitizeError_truncates(t *testing.T) {
+	long := strings.Repeat("x", 300)
+	result := sanitizeError(errors.New(long))
+	assert.LessOrEqual(t, len(result), maxErrLogLen+len("...[truncated]"))
+	assert.Contains(t, result, "[truncated]")
 }
