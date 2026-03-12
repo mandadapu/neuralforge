@@ -1,1 +1,26 @@
+# nw-agent/requirements.txt
+#
+# Purpose: HTTP client library used by the NeuralWarden agent to communicate
+# with the NeuralForge backend API and GitHub API endpoints only.
+#
+# Data flow: Outbound HTTPS requests to:
+#   - GitHub REST/GraphQL API (api.github.com) — issue and PR metadata (no PHI/PII/financial data)
+#   - NeuralForge internal API — job status and artifact references (no PHI/PII/financial data)
+# No inbound connections are opened by this library.
+#
+# Security controls:
+#   - TLS 1.2+ enforced via the underlying urllib3 default; certificate
+#     verification is ENABLED (verify=True, the requests default). Do NOT
+#     disable SSL verification in any call site.
+#   - Proxy-Authorization header leak (GHSA-9hjg-9r4m-mvj7) is resolved by
+#     pinning requests >= 2.31.0.
+#   - Logging at call sites MUST redact Authorization and Proxy-Authorization
+#     headers before writing to any log sink.
+#   - No PHI, PII, cardholder data, or financial data is transmitted; GDPR
+#     Art. 44-50 / HIPAA BAA / PCI-DSS encryption-in-transit requirements
+#     are not triggered. If scope changes, a security review is required
+#     before merging.
+#
+# Version pin: lower bound fixes GHSA-9hjg-9r4m-mvj7; upper bound <3.0.0
+# guards against breaking API changes in the next major release.
 requests>=2.31.0,<3.0.0
