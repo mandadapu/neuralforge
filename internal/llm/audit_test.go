@@ -53,5 +53,28 @@ func TestAuditedLLM_StreamComplete(t *testing.T) {
 
 	ch, err := audited.StreamComplete(context.Background(), CompletionRequest{Model: "test-model"})
 	require.NoError(t, err)
-	assert.NotNil(t, ch)
+	require.NotNil(t, ch)
+
+	// Drain the wrapped channel to ensure the audit goroutine completes.
+	for range ch {
+	}
+}
+
+func TestDefaultAuditConfig_RedactsContent(t *testing.T) {
+	cfg := DefaultAuditConfig()
+	assert.True(t, cfg.RedactContent, "default config must redact content to prevent PII leakage")
+}
+
+func TestNewAuditedWithConfig(t *testing.T) {
+	stub := &stubLLM{
+		name:     "test-provider",
+		response: CompletionResponse{Content: "secret", InputTokens: 3, OutputTokens: 2},
+	}
+	cfg := DefaultAuditConfig()
+	audited := NewAuditedWithConfig(stub, slog.Default(), cfg)
+
+	resp, err := audited.Complete(context.Background(), CompletionRequest{Model: "test-model"})
+	require.NoError(t, err)
+	// Response must be passed through unchanged regardless of redaction config.
+	assert.Equal(t, stub.response, resp)
 }
