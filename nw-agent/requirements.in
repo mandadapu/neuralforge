@@ -1,8 +1,32 @@
 # Source requirements — compile to requirements.txt with:
-#   pip-compile --generate-hashes requirements.in
+#   pip install pip-tools
+#   pip-compile --generate-hashes requirements.in -o requirements.txt
 #
+# ── Compliance Controls ────────────────────────────────────────────────────
 # Intended use: nw-agent VM runtime HTTP communication with GitHub API
-# and other HTTPS endpoints. All connections MUST use HTTPS (TLS).
+#   and other HTTPS endpoints only. No regulated data (PHI, PII, PAN,
+#   financial records) transits through these requests.
 #
-# GHSA-J8R2-6X86-Q33Q: requires requests >= 2.31.0
+# TLS enforcement: callers MUST use HTTPS URLs. Plaintext HTTP is not
+#   permitted. Enforce at the call site with `assert url.startswith("https://")`.
+#
+# Destination allowlist: outbound requests are restricted to:
+#   - api.github.com
+#   - *.githubusercontent.com
+#   No other hosts are permitted by the nw-agent runtime policy.
+#
+# Logging & redaction: request/response metadata (URL, status code,
+#   latency) is logged. Authorization headers and response bodies are
+#   NOT logged to prevent credential/data leakage.
+#
+# Regulatory scope: this agent does not process GDPR personal data or
+#   HIPAA-regulated health information. No DPIAs or BAAs are required.
+#   If scope changes, re-evaluate before merging.
+#
+# CVE status: requests 2.32.3 has no known CVEs as of 2026-03-12.
+#   GHSA-J8R2-6X86-Q33Q (Proxy-Authorization header leak) is fixed in ≥2.31.0.
+# ──────────────────────────────────────────────────────────────────────────
+#
+# After updating this file, regenerate requirements.txt with verified hashes:
+#   pip-compile --generate-hashes requirements.in -o requirements.txt
 requests>=2.31.0
