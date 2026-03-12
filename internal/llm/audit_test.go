@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -69,4 +70,44 @@ func TestAuditingLLM_StreamComplete(t *testing.T) {
 	chunk := <-ch
 	assert.Equal(t, "chunk", chunk.Content)
 	assert.True(t, chunk.Done)
+}
+
+func TestAuditingLLM_StreamComplete_InitError(t *testing.T) {
+	wantErr := errors.New("stream init error")
+	stub := &stubLLM{name: "stub", err: wantErr}
+	a := NewAuditingLLM(stub)
+
+	ch, err := a.StreamComplete(context.Background(), CompletionRequest{Model: "gpt-4"})
+	assert.ErrorIs(t, err, wantErr)
+	assert.Nil(t, ch)
+}
+
+func TestRedactError_Short(t *testing.T) {
+	err := errors.New("short error")
+	assert.Equal(t, "short error", redactError(err))
+}
+
+func TestRedactError_Truncated(t *testing.T) {
+	long := strings.Repeat("x", maxErrorLen+50)
+	result := redactError(errors.New(long))
+	assert.LessOrEqual(t, len(result), maxErrorLen+len(" [truncated]"))
+	assert.Contains(t, result, "[truncated]")
+}
+
+func TestRedactError_Nil(t *testing.T) {
+	assert.Equal(t, "", redactError(nil))
+}
+
+func TestNew_DisallowedProvider(t *testing.T) {
+	_, err := New("unknown-provider", "key", "model")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not permitted")
+}
+
+func TestNew_AllowedProviders(t *testing.T) {
+	for _, provider := range []string{"openai", "claude", "anthropic"} {
+		llm, err := New(provider, "key", "model")
+		assert.NoError(t, err, "provider %q should be allowed", provider)
+		assert.NotNil(t, llm)
+	}
 }

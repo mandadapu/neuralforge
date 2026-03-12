@@ -179,7 +179,13 @@ func (a *App) buildJobHandler() worker.JobHandler {
 	default:
 		apiKey, model = a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model
 	}
-	backend := llm.New(a.cfg.LLM.DefaultProvider, apiKey, model)
+	backend, err := llm.New(a.cfg.LLM.DefaultProvider, apiKey, model)
+	if err != nil {
+		slog.Error("failed to create LLM backend", "error", err)
+		return func(ctx context.Context, job store.Job) error {
+			return fmt.Errorf("LLM configuration error: %w", err)
+		}
+	}
 
 	// Create executor based on config.
 	var exec executor.Executor
