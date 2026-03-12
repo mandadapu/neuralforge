@@ -11,11 +11,6 @@ from api.cors_utils import get_allowed_origins
 
 app = FastAPI()
 
-# ---------------------------------------------------------------------------
-# Placeholder content (lines 1-108 omitted for brevity)
-# ---------------------------------------------------------------------------
-
-# Line 109 — FastAPI CORSMiddleware: use env-driven allowlist (sast_013 fix).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_allowed_origins(),
@@ -24,6 +19,5 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
-# Line 113 — secondary Flask-style CORS call: use env-driven allowlist (sast_013 fix).
 flask_app = Flask(__name__)
 CORS(flask_app, origins=get_allowed_origins())
