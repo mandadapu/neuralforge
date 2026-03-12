@@ -79,8 +79,8 @@ logging.basicConfig(
 # ---------------------------------------------------------------------------
 
 # Configuration is finalised below.
-# sast_012 fix — line 84: never hardcode DEBUG=True.
-# Read from FLASK_DEBUG env var; defaults to False in production.
+# Debug mode is controlled by the FLASK_DEBUG environment variable.
+# It defaults to false so production environments are never in debug mode.
 app.debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
 
 # ---------------------------------------------------------------------------
