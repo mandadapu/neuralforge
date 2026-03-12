@@ -6,7 +6,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// maxRepoConfigSize limits YAML input to prevent DoS via deeply nested structures (OSV-GO-2022-0603).
+// maxRepoConfigSize limits YAML input size to prevent DoS via deeply nested or large structures.
+// Mitigates CVE / OSV-GO-2022-0603 (gopkg.in/yaml.v3 < v3.0.1).
 const maxRepoConfigSize = 64 * 1024 // 64 KB
 
 type RepoConfig struct {
