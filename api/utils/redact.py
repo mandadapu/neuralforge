@@ -17,12 +17,21 @@ _SECRET_KEYS = re.compile(
 _REDACTED = "***REDACTED***"
 
 
+def redact_value(v: Any, *, recursive: bool = True) -> Any:
+    """Recursively redact a value that may be a dict or list."""
+    if isinstance(v, dict):
+        return redact_dict(v, recursive=recursive)
+    if recursive and isinstance(v, list):
+        return [redact_value(item, recursive=True) for item in v]
+    return v
+
+
 def redact_dict(d: Any, *, recursive: bool = True) -> Any:
     """Return a copy of *d* with sensitive values replaced by '***REDACTED***'.
 
     Args:
         d: The value to redact.  Non-dict values are returned unchanged.
-        recursive: When True (default), redact nested dicts as well.
+        recursive: When True (default), redact nested dicts and lists as well.
 
     Returns:
         A shallow (or deep, when recursive=True) copy of *d* with sensitive
@@ -34,8 +43,8 @@ def redact_dict(d: Any, *, recursive: bool = True) -> Any:
     for k, v in d.items():
         if _SECRET_KEYS.search(str(k)):
             result[k] = _REDACTED
-        elif recursive and isinstance(v, dict):
-            result[k] = redact_dict(v, recursive=True)
+        elif recursive:
+            result[k] = redact_value(v, recursive=True)
         else:
             result[k] = v
     return result
@@ -59,7 +68,7 @@ def redact_str(value: str, keys: list[str] | None = None) -> str:
     if keys is None:
         # Replace any "key": "value" where key looks sensitive.
         value = re.sub(
-            r'("(?:' + _SECRET_KEYS.pattern + r')"\\s*:\\s*)"[^"]*"',
+            r'("(?:' + _SECRET_KEYS.pattern + r')"\s*:\s*)"[^"]*"',
             r'\1"' + _REDACTED + '"',
             value,
             flags=re.IGNORECASE,
@@ -67,8 +76,8 @@ def redact_str(value: str, keys: list[str] | None = None) -> str:
     else:
         for key in keys:
             value = re.sub(
-                rf'("{re.escape(key)}"\\s*:\\s*)"[^"]*"',
-                rf'\\1"' + _REDACTED + '"',
+                r'("' + re.escape(key) + r'"\s*:\s*)"[^"]*"',
+                r'\1"' + _REDACTED + '"',
                 value,
             )
     return value

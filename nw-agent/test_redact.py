@@ -1,7 +1,7 @@
 """Unit tests for nw-agent/redact.py"""
 
 import pytest
-from redact import redact_dict, redact_str, _REDACTED
+from redact import redact_dict, redact_str, redact_value, _REDACTED
 
 
 class TestRedactDict:
@@ -69,6 +69,18 @@ class TestRedactDict:
         result = redact_dict({"token_count": 100})
         assert result["token_count"] == 100
 
+    def test_recursive_redacts_dicts_in_list(self):
+        data = {"items": [{"password": "secret", "name": "x"}, {"name": "y"}]}
+        result = redact_dict(data, recursive=True)
+        assert result["items"][0]["password"] == _REDACTED
+        assert result["items"][0]["name"] == "x"
+        assert result["items"][1]["name"] == "y"
+
+    def test_recursive_false_skips_list_items(self):
+        data = {"items": [{"password": "secret"}]}
+        result = redact_dict(data, recursive=False)
+        assert result["items"][0]["password"] == "secret"
+
 
 class TestRedactStr:
     def test_redacts_password_in_json_string(self):
@@ -80,4 +92,15 @@ class TestRedactStr:
     def test_non_matching_string_unchanged(self):
         s = '{"name": "alice", "age": 30}'
         result = redact_str(s, keys=["password"])
+        assert result == s
+
+    def test_auto_detection_redacts_token(self):
+        s = '{"token": "abc123", "name": "service"}'
+        result = redact_str(s)
+        assert "abc123" not in result
+        assert _REDACTED in result
+
+    def test_auto_detection_leaves_non_sensitive_unchanged(self):
+        s = '{"name": "alice", "count": "5"}'
+        result = redact_str(s)
         assert result == s
