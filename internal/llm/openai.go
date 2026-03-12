@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -60,6 +61,8 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 	if req.Temperature > 0 {
 		params.Temperature = param.NewOpt(req.Temperature)
 	}
+
+	slog.Info("llm call", "backend", "openai", "agent", sanitizeAgentName(req.AgentName), "model", model, "data_classification", "non-pii")
 
 	resp, err := withRetry(ctx, DefaultRetryConfig, func() (*openai.ChatCompletion, error) {
 		return o.client.Chat.Completions.New(ctx, params)
