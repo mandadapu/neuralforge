@@ -14,9 +14,16 @@ type ClaudeBackend struct {
 	model  string
 }
 
+// minAPIKeyLen is the minimum plausible length for a real API key.
+// This guards against placeholder/default values like "changeme" or "test".
+const minAPIKeyLen = 20
+
 func NewClaude(apiKey, model string) (*ClaudeBackend, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("claude: API key must not be empty")
+	}
+	if len(apiKey) < minAPIKeyLen {
+		return nil, fmt.Errorf("claude: API key is invalid")
 	}
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
 	return &ClaudeBackend{client: client, model: model}, nil

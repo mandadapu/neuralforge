@@ -18,6 +18,9 @@ func NewOpenAI(apiKey, model string) (*OpenAIBackend, error) {
 	if apiKey == "" {
 		return nil, fmt.Errorf("openai: API key must not be empty")
 	}
+	if len(apiKey) < minAPIKeyLen {
+		return nil, fmt.Errorf("openai: API key is invalid")
+	}
 	client := openai.NewClient(option.WithAPIKey(apiKey))
 	return &OpenAIBackend{client: client, model: model}, nil
 }

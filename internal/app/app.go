@@ -181,9 +181,18 @@ func (a *App) buildJobHandler() worker.JobHandler {
 		backend, llmErr = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
 	}
 	if llmErr != nil {
-		slog.Error("failed to create LLM backend", "error", llmErr)
+		// Log a sanitized message — avoid logging llmErr directly to prevent
+		// inadvertent exposure of API key characteristics or config details.
+		provider := a.cfg.LLM.DefaultProvider
+		if provider == "" {
+			provider = "claude"
+		}
+		slog.Error("failed to create LLM backend", "provider", provider)
 		return func(ctx context.Context, job store.Job) error {
-			return fmt.Errorf("LLM backend unavailable: %w", llmErr)
+			// Include audit fields (job ID, provider, timestamp) for compliance
+			// investigations. Do not wrap llmErr to avoid leaking config details.
+			return fmt.Errorf("LLM backend unavailable: provider=%s job=%s time=%s",
+				provider, job.ID, time.Now().UTC().Format(time.RFC3339))
 		}
 	}
 
