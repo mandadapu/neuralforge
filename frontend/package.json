@@ -2,5 +2,8 @@
   "name": "neuralforge-frontend",
   "version": "1.0.0",
   "description": "NeuralForge frontend",
-  "private": true
+  "private": true,
+  "overrides": {
+    "minimatch": ">=9.0.5"
+  }
 }
