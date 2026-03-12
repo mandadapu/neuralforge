@@ -11,9 +11,12 @@ app = Flask(__name__)
 # Placeholder content (lines 1-83 omitted for brevity)
 # ---------------------------------------------------------------------------
 
-# Line 84 — sast_012 fix: replaced hardcoded DEBUG=True with env-driven flag.
-# Never enable debug mode in production; rely on the FLASK_DEBUG env var instead.
-app.debug = os.environ.get("FLASK_DEBUG", "false").lower() == "true"
+# Line 84 — debug mode is always disabled in production code (sast_012).
+app.debug = False
+
+# Runtime guard: raise an error if debug is somehow enabled in a production environment.
+if os.environ.get("ENVIRONMENT", "").lower() == "production" and app.debug:
+    raise RuntimeError("Debug mode must not be enabled in production.")
 
 # ---------------------------------------------------------------------------
 # Placeholder content (lines 85-319 omitted for brevity)
