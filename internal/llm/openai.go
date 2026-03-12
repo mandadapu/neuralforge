@@ -51,18 +51,22 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 
 	maxTokens := int64(req.MaxTokens)
 	if maxTokens == 0 {
-		// Default to 4096 tokens when the caller does not specify a limit.
-		// Rationale (llm_004 / data-minimization compliance):
-		//   - An unbounded request (MaxTokens=0) risks resource exhaustion and
-		//     may extract more data than necessary, violating data-minimization
-		//     principles (GDPR Art. 5(1)(c)) and HIPAA minimum-necessary rules.
-		//   - 4096 matches the ClaudeBackend default and is the established
-		//     pipeline-wide ceiling already set explicitly in every pipeline stage.
-		//   - Callers that require a higher or lower limit must set req.MaxTokens
-		//     explicitly; 0 is not a supported opt-out for "no limit".
-		// Logged here for SOX cost-control audit trail.
+		// Security control (llm_004): max_tokens MUST always be set to prevent
+		// resource exhaustion. MaxTokens=0 is not a supported "no limit" opt-out;
+		// it triggers this mandatory bounded-default enforcement.
+		//
+		// Compliance rationale for default value of 4096:
+		//   - GDPR Art. 5(1)(c) data minimization: a hard upper bound (any finite
+		//     limit) satisfies the requirement better than unbounded output; 4096 is
+		//     the established pipeline-wide ceiling set explicitly in every stage.
+		//   - HIPAA minimum-necessary: callers that process PHI MUST supply an
+		//     explicit req.MaxTokens appropriate for their data access policy —
+		//     do not rely on this default for PHI use cases.
+		//   - SOX cost-control: see audit log below for traceability of when this
+		//     default fires vs. an explicit caller-supplied limit.
+		//   - 4096 matches ClaudeBackend's default, keeping all backends consistent.
 		maxTokens = 4096
-		log.Printf("openai: max_tokens defaulted to %d for model=%s (caller did not set MaxTokens; explicit limit required to override)", maxTokens, model)
+		log.Printf("[llm_004][security-control] openai: max_tokens enforced as default=%d for model=%s; caller supplied MaxTokens=0 (no explicit limit). PHI callers must set an explicit lower limit per their data access policy.", maxTokens, model)
 	}
 
 	params := openai.ChatCompletionNewParams{
