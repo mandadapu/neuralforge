@@ -1,33 +1,44 @@
 """OWASP vulnerability scanner API."""
 
 import os
+import re
 import logging
+from urllib.parse import urlparse
 
-from flask import Flask, request, jsonify
+from flask import Flask, request
 
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 
+_ORIGIN_RE = re.compile(r'^https?://[^/*]+$')
+
+
+def _validate_origin(origin: str) -> bool:
+    """Return True if *origin* is a well-formed http/https URL with no wildcards."""
+    try:
+        parsed = urlparse(origin)
+        return bool(_ORIGIN_RE.match(origin) and parsed.scheme in ("http", "https") and parsed.netloc)
+    except Exception:
+        return False
+
 
 def _get_allowed_origins():
-    """Return the list of allowed CORS origins from the environment."""
+    """Return validated trusted origins from the ALLOWED_ORIGINS env var."""
     raw = os.environ.get("ALLOWED_ORIGINS", "")
-    return [o.strip() for o in raw.split(",") if o.strip()]
+    validated = []
+    for o in raw.split(","):
+        o = o.strip()
+        if o:
+            if _validate_origin(o):
+                validated.append(o)
+            else:
+                logger.warning("ALLOWED_ORIGINS: skipping invalid entry %r", o)
+    return validated
 
 
 def _build_cors_response(response, request_origin: str):
-    """
-    Apply CORS headers to *response* only when *request_origin* is in the
-    configured allowlist (sast_013 fix — lines 109 and 113).
-
-    Access-Control-Allow-Origin is set to the specific request origin rather
-    than '*', and Access-Control-Allow-Credentials is only set to 'true' when
-    a specific (non-wildcard) origin is matched — as required by the CORS spec.
-
-    ALLOWED_ORIGINS environment variable: comma-separated list of full origins.
-    Example: ALLOWED_ORIGINS=https://app.example.com,https://staging.example.com
-    """
+    """Set CORS response headers for trusted origins only."""
     allowed = _get_allowed_origins()
 
     if not allowed:
@@ -44,6 +55,9 @@ def _build_cors_response(response, request_origin: str):
         # line 113 — Access-Control-Allow-Credentials
         # Only valid when a specific (non-wildcard) origin is set.
         response.headers["Access-Control-Allow-Credentials"] = "true"
+        logger.info("CORS: permitted origin=%r", request_origin)
+    else:
+        logger.info("CORS: denied origin=%r (not in trusted list)", request_origin or "(none)")
 
     return response
 
