@@ -15,6 +15,8 @@ Limitations: regex-based detection is best-effort and not exhaustive.
 Adversarially crafted inputs may still evade these patterns.
 """
 
+from __future__ import annotations
+
 import argparse
 import logging
 import os
