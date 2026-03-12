@@ -35,8 +35,7 @@ class IssuesWorker:
 
     def _open_issue(self, repo: Repository, finding: Finding) -> None:
         report = self._ctx.scan.report([finding])
-        # RepoService exposes GitHub operations; issue creation goes through it.
-        self._ctx.repo._gh.create_issue(
+        self._ctx.repo.create_issue(
             repo=repo,
             title=f"[{finding.severity}] {finding.title}",
             body=report,

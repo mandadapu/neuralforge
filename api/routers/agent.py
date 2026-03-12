@@ -4,7 +4,7 @@
 # Import fan-out reduction: previously imported 18 intra-repo modules directly.
 # Now uses CloudService + RepoService facades, Pydantic schemas, and DB session.
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from api.services.cloud_service import CloudService
@@ -19,8 +19,17 @@ def _cloud_svc() -> CloudService:
     return CloudService()
 
 
-def _repo_svc() -> RepoService:
-    return RepoService(installation_id=0)  # populated by auth middleware
+def _repo_svc(request: Request) -> RepoService:
+    """Construct RepoService from the installation_id injected by auth middleware.
+
+    Auth middleware is expected to set request.state.installation_id.
+    Raises HTTP 401 if the value is missing or invalid so that RepoService
+    is never instantiated with installation_id=0 (access-control bypass risk).
+    """
+    installation_id = getattr(request.state, "installation_id", None)
+    if not isinstance(installation_id, int) or installation_id <= 0:
+        raise HTTPException(status_code=401, detail="Missing or invalid installation credentials")
+    return RepoService(installation_id=installation_id)
 
 
 @router.post("/run", response_model=AgentRunResponse)
