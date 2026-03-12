@@ -52,6 +52,10 @@ func (h *WebhookHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// verifySignature authenticates the request using HMAC-SHA256 (X-Hub-Signature-256).
+// This is the authentication gate for the /webhooks/github endpoint when GitHub
+// App middleware is not in use. Requests with missing or invalid signatures are
+// rejected with HTTP 401 before any payload processing occurs.
 func (h *WebhookHandler) verifySignature(payload []byte, signature string) bool {
 	if !strings.HasPrefix(signature, "sha256=") {
 		return false
