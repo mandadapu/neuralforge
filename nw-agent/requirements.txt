@@ -1,0 +1,6 @@
+# Security fix: requests upgraded to 2.32.3 to resolve GHSA-9wx4-h78v-vm56
+# (Proxy-Authorization header leak on redirect, CVSS 5.0).
+# Hashes pinned for supply-chain integrity; verify with: pip install --require-hashes -r requirements.txt
+requests==2.32.3 \
+    --hash=sha256:70761cfe03c773ceb22aa2f671b4757976145175cdfca038c02654d061d6dcc6 \
+    --hash=sha256:55365417734eb18255590a9f9f692e8398e4d29f902f22b7a7b72a5b36cbf9a
