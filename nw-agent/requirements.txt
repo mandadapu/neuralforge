@@ -1,0 +1,18 @@
+# Security: requests>=2.31.0 fixes CVE-2023-32681 / GHSA-9wx4-h78v-vm56
+# (Proxy-Authorization header leak on redirect in requests<=2.28)
+#
+# Usage: import via http_client.ComplianceHTTPClient — do NOT use requests
+# directly in application code.  See http_client.py for enforced controls.
+#
+# Data transmission policy (GDPR / SOX / HIPAA):
+#   - Transmit only data with documented legal basis (GDPR Art. 6 / Art. 9).
+#   - Register all destination endpoints in the data-flow inventory.
+#   - PII / PHI / PCI data requires data-classification review before use.
+#
+# Enforced by ComplianceHTTPClient (http_client.py):
+#   - HTTPS-only: plain-HTTP URLs are rejected at runtime.
+#   - TLS certificate verification always enabled (verify=True).
+#   - Default timeouts (5s connect, 30s read) to bound data-exposure windows.
+#   - Response bodies never logged to prevent leaking sensitive data.
+#   - Structured audit log per request: destination URL, method, data-type tag.
+requests>=2.31.0
