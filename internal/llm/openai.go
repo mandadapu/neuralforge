@@ -32,6 +32,9 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 	if model == "" {
 		model = o.model
 	}
+	// Audit log: record only metadata (backend, agent, model) for attribution.
+	// Request content (System prompt, Messages) is intentionally excluded to
+	// prevent accidental exposure of PII/PHI/PCI or other sensitive data in logs.
 	slog.Debug("llm call", "backend", "openai", "agent", req.AgentName, "model", model)
 
 	// Build messages, prepending system message if provided
