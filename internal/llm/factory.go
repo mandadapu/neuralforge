@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 )
 
 // New is the auditing factory for all LLM backends.
 // It logs client instantiation after the backend is successfully created so
 // that the audit entry only appears when creation actually succeeded.
-// The apiKey is never passed to the log call to prevent credential exposure.
+// The apiKey parameter is intentionally excluded from the audit log to prevent
+// credential exposure; only provider and model are recorded.
 func New(provider, apiKey, model string) (LLM, error) {
 	var backend LLM
 	switch provider {
@@ -22,11 +24,15 @@ func New(provider, apiKey, model string) (LLM, error) {
 	}
 
 	// Audit log emitted after successful instantiation.
+	// Explicit UTC timestamp is included to satisfy audit trail requirements
+	// (GDPR Art. 30, HIPAA §164.312(b), SOX 404) independent of log handler config.
 	// model is sanitized before logging to prevent log injection.
+	// apiKey is intentionally omitted to prevent credential exposure.
 	slog.Info("llm client created",
 		"provider", provider,
 		"model", sanitizeModel(model),
 		"audit", true,
+		"timestamp", time.Now().UTC().Format(time.RFC3339),
 	)
 	return backend, nil
 }
