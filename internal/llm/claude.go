@@ -29,7 +29,8 @@ func (c *ClaudeBackend) Name() string {
 
 func (c *ClaudeBackend) Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
 	if req.AgentName != "" {
-		slog.InfoContext(ctx, "llm_call", "backend", "claude", "agent", req.AgentName, "model", req.Model)
+		// sanitizeAgentName enforces an allowlist, preventing PII/PHI from appearing in logs.
+		slog.InfoContext(ctx, "llm_call", "backend", "claude", "agent", sanitizeAgentName(req.AgentName), "model", req.Model)
 	}
 
 	model := req.Model

@@ -29,7 +29,8 @@ func (o *OpenAIBackend) Name() string {
 
 func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
 	if req.AgentName != "" {
-		slog.InfoContext(ctx, "llm_call", "backend", "openai", "agent", req.AgentName, "model", req.Model)
+		// sanitizeAgentName enforces an allowlist, preventing PII/PHI from appearing in logs.
+		slog.InfoContext(ctx, "llm_call", "backend", "openai", "agent", sanitizeAgentName(req.AgentName), "model", req.Model)
 	}
 
 	model := req.Model
