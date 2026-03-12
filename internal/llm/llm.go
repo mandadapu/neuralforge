@@ -35,6 +35,12 @@ type StreamChunk struct {
 	Content string
 	Done    bool
 	Error   error
+	// Usage is populated on the final chunk (Done==true) by backends that surface
+	// token counts in the streaming API. Zero values indicate the backend does not
+	// report per-stream usage; cost tracking will be unavailable for that call.
+	InputTokens  int
+	OutputTokens int
+	Cost         float64
 }
 
 type LLM interface {

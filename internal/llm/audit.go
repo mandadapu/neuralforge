@@ -95,16 +95,29 @@ func (a *AuditedLLM) StreamComplete(ctx context.Context, req CompletionRequest) 
 	go func() {
 		defer close(out)
 		var lastErr error
+		var inputTokens, outputTokens int
+		var cost float64
 		for chunk := range inner {
 			out <- chunk
 			if chunk.Error != nil {
 				lastErr = chunk.Error
 			}
+			// Accumulate usage from the final chunk (Done==true) for backends
+			// that surface token counts in the streaming API.
+			if chunk.Done {
+				inputTokens = chunk.InputTokens
+				outputTokens = chunk.OutputTokens
+				cost = chunk.Cost
+			}
 		}
-		// Emit audit entry at stream closure. Content is intentionally omitted.
+		// Emit audit entry at stream closure. Content is intentionally omitted
+		// to prevent PHI/PII/PAN exposure. Only operational metadata is recorded.
 		slog.Info("llm.StreamComplete",
 			"audit_event", auditEvent(lastErr),
 			"provider", a.inner.Name(),
+			"input_tokens", inputTokens,
+			"output_tokens", outputTokens,
+			"cost_usd", cost,
 			"latency_ms", time.Since(start).Milliseconds(),
 			"error", lastErr,
 		)
