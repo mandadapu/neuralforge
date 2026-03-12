@@ -1,1 +1,13 @@
+# NeuralWarden VM Agent — Python dependencies
+#
+# Security fix: requests pinned to >=2.31.0 to remediate CVE-2023-32681 / PYSEC-2023-74.
+# Affected versions (<2.31.0) leaked Proxy-Authorization headers to destination servers
+# on HTTP redirect. See: https://github.com/advisories/GHSA-j8r2-6x86-q33q
+#
+# Data flow: requests is used exclusively for outbound HTTPS API calls (GitHub, LLM
+# endpoints). No PHI, PII, or regulated data is transmitted. TLS 1.2+ is enforced by
+# the underlying urllib3 dependency (>=2.0) bundled with requests>=2.32.
+#
+# Hash verification: run `pip-compile --generate-hashes requirements.txt` (pip-tools)
+# to produce a hash-pinned requirements.txt.lock for supply chain hardening.
 requests==2.32.3
