@@ -1,1 +1,13 @@
+# Pinned Python dependencies for the nw-agent VM runtime.
+#
+# Intended use: HTTP communication with GitHub API and HTTPS endpoints only.
+# All connections MUST use HTTPS (TLS). No regulated data (PHI/PII/PAN)
+# transits through these requests.
+#
+# Security: pins requests >= 2.31.0 to fix GHSA-J8R2-6X86-Q33Q
+# (Proxy-Authorization header leak on redirect, CVSS 5.0).
+#
+# Hash verification: regenerate with verified hashes using pip-tools:
+#   pip install pip-tools
+#   pip-compile --generate-hashes requirements.in -o requirements.txt
 requests==2.32.3

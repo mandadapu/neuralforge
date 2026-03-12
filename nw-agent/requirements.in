@@ -1,0 +1,8 @@
+# Source requirements — compile to requirements.txt with:
+#   pip-compile --generate-hashes requirements.in
+#
+# Intended use: nw-agent VM runtime HTTP communication with GitHub API
+# and other HTTPS endpoints. All connections MUST use HTTPS (TLS).
+#
+# GHSA-J8R2-6X86-Q33Q: requires requests >= 2.31.0
+requests>=2.31.0
