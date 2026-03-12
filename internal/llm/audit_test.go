@@ -117,7 +117,7 @@ func TestAuditedLLM_StreamComplete(t *testing.T) {
 		}
 
 		logOutput := buf.String()
-		for _, key := range []string{"llm.stream.start", "llm.stream.done", "provider", "model", "duration_ms"} {
+		for _, key := range []string{"llm.stream.start", "llm.stream.done", "provider", "model", "duration_ms", "input_tokens", "output_tokens", "cost_usd"} {
 			assert.True(t, strings.Contains(logOutput, key), "expected log key %q in output: %s", key, logOutput)
 		}
 	})
@@ -145,14 +145,16 @@ func TestSanitizeError(t *testing.T) {
 
 	short := errors.New("short error")
 	out := sanitizeError(short)
-	assert.True(t, strings.Contains(out, "short error"))
+	// Only the type should be logged — message content must not appear in audit logs.
+	assert.NotContains(t, out, "short error", "error message content must not appear in sanitized output")
+	assert.NotEmpty(t, out, "sanitized output must not be empty for non-nil error")
 
-	// Build an error whose message exceeds maxErrLen.
-	longMsg := strings.Repeat("x", maxErrLen+50)
+	// Long errors should also only log the type, never the full message.
+	longMsg := strings.Repeat("x", 200)
 	long := errors.New(longMsg)
 	out = sanitizeError(long)
-	assert.LessOrEqual(t, len(out), maxErrLen+10, "sanitized error should be truncated")
-	assert.True(t, strings.HasSuffix(out, "…"), "truncated error should end with ellipsis")
+	assert.NotContains(t, out, longMsg, "error message must not appear in sanitized output")
+	assert.NotEmpty(t, out)
 }
 
 func TestAuditedLLM_ErrorSanitized(t *testing.T) {

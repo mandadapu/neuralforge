@@ -5,7 +5,7 @@ package llm
 // Privacy/Legal basis for logging:
 //   - Only metadata is logged (provider, model, token counts, cost, latency, error type).
 //   - Message content is NEVER logged; only the message count is recorded.
-//   - Error messages are truncated to prevent leakage of sensitive API response bodies.
+//   - Error message content is NEVER logged; only the error type name is recorded.
 //   - Callers must ensure that model names and provider names do not themselves
 //     constitute personal data before passing them through.
 //   - This logging constitutes legitimate interest under GDPR Art. 6(1)(f) for
@@ -18,23 +18,15 @@ import (
 	"time"
 )
 
-// maxErrLen is the maximum length of an error message recorded in audit logs.
-// Error strings from upstream APIs may contain sensitive response bodies;
-// truncation limits accidental PII/PHI exposure.
-const maxErrLen = 120
-
-// sanitizeError returns a truncated, safe string representation of err for
-// audit logging. The full error is preserved on the returned Go error value
-// so callers are unaffected.
+// sanitizeError returns only the reflect type name of err for audit logging.
+// Error message content is deliberately excluded to prevent leakage of sensitive
+// API response data (API keys, auth tokens, PII/PHI) into log streams.
+// The full error value is preserved and returned to callers unmodified.
 func sanitizeError(err error) string {
 	if err == nil {
 		return ""
 	}
-	msg := fmt.Sprintf("%T: %s", err, err.Error())
-	if len(msg) > maxErrLen {
-		msg = msg[:maxErrLen] + "…"
-	}
-	return msg
+	return fmt.Sprintf("%T", err)
 }
 
 type AuditedLLM struct {
@@ -57,8 +49,8 @@ func (a *AuditedLLM) Name() string {
 
 func (a *AuditedLLM) Complete(ctx context.Context, req CompletionRequest) (CompletionResponse, error) {
 	start := time.Now()
-	// Log only metadata — message content is not recorded to protect PII/PHI.
-	a.logger.Info("llm.call.start", "provider", a.inner.Name(), "model", req.Model, "messages", len(req.Messages))
+	// Log only the message count — content is never recorded to protect PII/PHI.
+	a.logger.Info("llm.call.start", "provider", a.inner.Name(), "model", req.Model, "message_count", len(req.Messages))
 	resp, err := a.inner.Complete(ctx, req)
 	elapsed := time.Since(start)
 	if err != nil {
@@ -76,8 +68,8 @@ func (a *AuditedLLM) Complete(ctx context.Context, req CompletionRequest) (Compl
 // so output_chars is recorded as a proxy.
 func (a *AuditedLLM) StreamComplete(ctx context.Context, req CompletionRequest) (<-chan StreamChunk, error) {
 	start := time.Now()
-	// Log only metadata — message content is not recorded to protect PII/PHI.
-	a.logger.Info("llm.stream.start", "provider", a.inner.Name(), "model", req.Model, "messages", len(req.Messages))
+	// Log only the message count — content is never recorded to protect PII/PHI.
+	a.logger.Info("llm.stream.start", "provider", a.inner.Name(), "model", req.Model, "message_count", len(req.Messages))
 
 	innerCh, err := a.inner.StreamComplete(ctx, req)
 	if err != nil {
@@ -105,8 +97,12 @@ func (a *AuditedLLM) StreamComplete(ctx context.Context, req CompletionRequest) 
 			}
 		}
 		elapsed := time.Since(start)
+		// Token counts and cost are not available from stream chunks; -1 signals
+		// "not available" for SOX/HIPAA audit consumers. output_chars is a proxy.
 		a.logger.Info("llm.stream.done", "provider", a.inner.Name(), "model", req.Model,
-			"output_chars", outputChars, "duration_ms", elapsed.Milliseconds())
+			"output_chars", outputChars,
+			"input_tokens", -1, "output_tokens", -1, "cost_usd", -1.0,
+			"duration_ms", elapsed.Milliseconds())
 	}()
 	return outCh, nil
 }
