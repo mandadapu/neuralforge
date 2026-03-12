@@ -1,6 +1,7 @@
 {
   "name": "neuralforge-frontend",
   "version": "1.0.0",
+  "description": "NeuralForge frontend — pins minimatch to a patched release (>= 9.0.1) to resolve GHSA-7r86-cg39-jmmj",
   "private": true,
   "dependencies": {
     "minimatch": "^9.0.1"
