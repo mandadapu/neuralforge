@@ -175,9 +175,9 @@ func (a *App) buildJobHandler() worker.JobHandler {
 	var backend llm.LLM
 	switch a.cfg.LLM.DefaultProvider {
 	case "openai":
-		backend = llm.NewOpenAI(a.cfg.LLM.OpenAI.APIKey, a.cfg.LLM.OpenAI.Model)
+		backend = llm.NewAudited(llm.NewOpenAI(a.cfg.LLM.OpenAI.APIKey, a.cfg.LLM.OpenAI.Model), slog.Default())
 	default:
-		backend = llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model)
+		backend = llm.NewAudited(llm.NewClaude(a.cfg.LLM.Claude.APIKey, a.cfg.LLM.Claude.Model), slog.Default())
 	}
 
 	// Create executor based on config.
