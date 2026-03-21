@@ -3,3 +3,6 @@ bin/
 *.pem
 .env
 vendor/
+__pycache__/
+*.pyc
+*.pyo
