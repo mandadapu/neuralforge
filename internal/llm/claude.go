@@ -14,12 +14,19 @@ type ClaudeBackend struct {
 	model  string
 }
 
-func NewClaude(apiKey, model string) *ClaudeBackend {
+// newClaudeBackend constructs the raw backend without auditing.
+// Use NewClaude to get an audited instance.
+func newClaudeBackend(apiKey, model string) *ClaudeBackend {
 	client := anthropic.NewClient(option.WithAPIKey(apiKey))
 	return &ClaudeBackend{
 		client: client,
 		model:  model,
 	}
+}
+
+// NewClaude returns an audited LLM backed by Anthropic Claude.
+func NewClaude(apiKey, model string) LLM {
+	return NewAudited(newClaudeBackend(apiKey, model))
 }
 
 func (c *ClaudeBackend) Name() string {
