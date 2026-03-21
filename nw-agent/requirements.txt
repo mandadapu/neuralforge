@@ -1,0 +1,7 @@
+# Security audit: requests pinned to 2.32.0 to remediate GHSA-9hjg-9r4m-mvj7
+# (CVE-2024-35195, CVSS 5.0) — versions < 2.32.0 leak Authorization headers to
+# proxies on HTTPS→HTTP redirect. No API changes between 2.28 and 2.32.x.
+#
+# To regenerate this file with cryptographic hashes for supply-chain verification:
+#   pip-compile requirements.in --generate-hashes --output-file requirements.txt
+requests==2.32.0
