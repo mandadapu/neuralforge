@@ -1,0 +1,8 @@
+{
+  "name": "neuralforge-frontend",
+  "version": "0.0.1",
+  "private": true,
+  "overrides": {
+    "ajv": "^8.17.1"
+  }
+}
