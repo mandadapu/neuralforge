@@ -5,8 +5,21 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
+
+// validateLocalPath ensures a filesystem path is absolute and clean,
+// preventing path traversal attacks in Docker volume mounts.
+func validateLocalPath(path string) error {
+	if path == "" {
+		return fmt.Errorf("path must not be empty")
+	}
+	if !filepath.IsAbs(filepath.Clean(path)) {
+		return fmt.Errorf("path must be absolute: %s", path)
+	}
+	return nil
+}
 
 type DockerExecutor struct {
 	image string
@@ -34,6 +47,13 @@ func (d *DockerExecutor) buildArgs(job ExecutorJob) []string {
 }
 
 func (d *DockerExecutor) Run(ctx context.Context, job ExecutorJob) (ExecutorResult, error) {
+	if err := validateBranch(job.Branch); err != nil {
+		return ExecutorResult{}, fmt.Errorf("invalid branch: %w", err)
+	}
+	if err := validateLocalPath(job.RepoPath); err != nil {
+		return ExecutorResult{}, fmt.Errorf("invalid repo path: %w", err)
+	}
+
 	ctx, cancel := context.WithTimeout(ctx, job.Timeout)
 	defer cancel()
 

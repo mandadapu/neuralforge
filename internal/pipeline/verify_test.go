@@ -49,7 +49,7 @@ func TestVerifyStageRunWhitespaceOnlyParts(t *testing.T) {
 }
 
 func TestVerifyStageRunNoLocalPath(t *testing.T) {
-	s := NewVerifyStage("echo hello")
+	s := NewVerifyStage("make test")
 	state := &PipelineState{}
 	result, err := s.Run(context.Background(), state)
 	assert.NoError(t, err)
@@ -58,13 +58,22 @@ func TestVerifyStageRunNoLocalPath(t *testing.T) {
 }
 
 func TestVerifyStageRunValidCommand(t *testing.T) {
-	s := NewVerifyStage("echo hello")
+	s := NewVerifyStage("go version")
 	state := &PipelineState{Repo: RepoContext{LocalPath: "/tmp"}}
 	result, err := s.Run(context.Background(), state)
 	assert.NoError(t, err)
 	assert.Equal(t, StatusPassed, result.Status)
 	assert.NotNil(t, state.TestResults)
 	assert.True(t, state.TestResults.Passed)
+}
+
+func TestVerifyStageRunDisallowedCommand(t *testing.T) {
+	s := NewVerifyStage("bash -c 'echo pwned'")
+	state := &PipelineState{Repo: RepoContext{LocalPath: "/tmp"}}
+	result, err := s.Run(context.Background(), state)
+	assert.NoError(t, err)
+	assert.Equal(t, StatusFailed, result.Status)
+	assert.Contains(t, result.Output, "verify command not allowed")
 }
 
 func TestVerifyStageName(t *testing.T) {
