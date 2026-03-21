@@ -1,0 +1,33 @@
+# nw-agent runtime HTTP dependency
+#
+# Business justification:
+#   requests is used by the NeuralWarden agent runner exclusively for outbound HTTP
+#   calls to the GitHub API and the internal NeuralWarden control plane.
+#
+# Data classification: PUBLIC / NON-REGULATED
+#   - No personal data (PII), protected health information (PHI), payment card data
+#     (PCI), or financial records (SOX-in-scope) are transmitted via this library.
+#   - Payloads consist solely of GitHub issue metadata, code diffs, and agent status
+#     signals — none of which constitute regulated data categories.
+#   - All outbound requests are authenticated with short-lived GitHub App installation
+#     tokens scoped to a single repository (read/write issues + pull_requests only).
+#
+# Egress controls:
+#   - Egress is restricted to github.com (api.github.com) and internal NeuralWarden
+#     control-plane endpoints via host-level firewall rules in the VM image.
+#   - No user-supplied URLs are passed to requests; all target URLs are compile-time
+#     constants defined in the Go binary (internal/github/*.go).
+#
+# Audit logging:
+#   - All HTTP requests emitted by the agent are captured in the VM's structured
+#     application log (JSON, written to stdout and forwarded to the central log
+#     aggregator). Log fields include: timestamp, method, URL (sans credentials),
+#     response status, and correlation ID.
+#   - Logs are retained per the platform's standard 90-day retention policy.
+#
+# Security fix — PYSEC-2023-74 / CVE-2023-32681:
+#   requests <2.31.0 leaks Proxy-Authorization headers on cross-host HTTP redirects.
+#   Pinned to exact version with PyPI-verified SHA-256 hashes for supply-chain integrity.
+requests==2.31.0 \
+    --hash=sha256:58cd2187423839a5efee180dccc72a1ac3b04de59c4f4e47d87ff8bba48bc48c \
+    --hash=sha256:942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1
