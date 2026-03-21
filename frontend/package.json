@@ -1,0 +1,9 @@
+{
+  "name": "neuralforge-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "overrides": {
+    "minimatch": ">=9.0.5"
+  }
+}
