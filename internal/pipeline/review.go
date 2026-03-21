@@ -53,7 +53,8 @@ func (s *ReviewStage) Run(ctx context.Context, state *PipelineState) (StageResul
 	)
 
 	resp, err := s.llm.Complete(ctx, llm.CompletionRequest{
-		System: "You are a code reviewer. Start your response with APPROVE or REQUEST_CHANGES.",
+		AgentName: s.Name(),
+		System:    "You are a code reviewer. Start your response with APPROVE or REQUEST_CHANGES.",
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: prompt},
 		},

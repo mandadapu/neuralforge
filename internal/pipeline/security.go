@@ -36,7 +36,8 @@ func (s *SecurityStage) Run(ctx context.Context, state *PipelineState) (StageRes
 	)
 
 	resp, err := s.llm.Complete(ctx, llm.CompletionRequest{
-		System: "You are a security reviewer analyzing implementation plans for vulnerabilities.",
+		AgentName: s.Name(),
+		System:    "You are a security reviewer analyzing implementation plans for vulnerabilities.",
 		Messages: []llm.Message{
 			{Role: llm.RoleUser, Content: prompt},
 		},
