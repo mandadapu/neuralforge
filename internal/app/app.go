@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -68,11 +69,23 @@ func New(cfg config.Config) (*App, error) {
 	if a.ghApp != nil {
 		mux.Handle("/webhooks/github", a.ghApp.WebhookMiddleware(
 			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				body, _ := io.ReadAll(r.Body)
+				r.Body = http.MaxBytesReader(w, r.Body, maxWebhookPayloadBytes)
+				body, err := io.ReadAll(r.Body)
+				if err != nil {
+					var maxErr *http.MaxBytesError
+					if errors.As(err, &maxErr) {
+						http.Error(w, "payload too large", http.StatusRequestEntityTooLarge)
+					} else {
+						http.Error(w, "read error", http.StatusBadRequest)
+					}
+					return
+				}
 				eventType := r.Header.Get("X-GitHub-Event")
 				go a.handleEvent(eventType, body)
 				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"ok":true}`))
+				if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+					slog.Error("failed to write webhook response", "error", err)
+				}
 			}),
 		))
 	} else {
