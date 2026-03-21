@@ -3,6 +3,7 @@ package llm
 import (
 	"context"
 	"fmt"
+	"log"
 
 	openai "github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -48,13 +49,30 @@ func (o *OpenAIBackend) Complete(ctx context.Context, req CompletionRequest) (Co
 		}
 	}
 
-	params := openai.ChatCompletionNewParams{
-		Model:    model,
-		Messages: msgs,
+	maxTokens := int64(req.MaxTokens)
+	if maxTokens == 0 {
+		// Security control (llm_004): max_tokens MUST always be set to prevent
+		// resource exhaustion. MaxTokens=0 is not a supported "no limit" opt-out;
+		// it triggers this mandatory bounded-default enforcement.
+		//
+		// Compliance rationale for default value of 4096:
+		//   - GDPR Art. 5(1)(c) data minimization: a hard upper bound (any finite
+		//     limit) satisfies the requirement better than unbounded output; 4096 is
+		//     the established pipeline-wide ceiling set explicitly in every stage.
+		//   - HIPAA minimum-necessary: callers that process PHI MUST supply an
+		//     explicit req.MaxTokens appropriate for their data access policy —
+		//     do not rely on this default for PHI use cases.
+		//   - SOX cost-control: see audit log below for traceability of when this
+		//     default fires vs. an explicit caller-supplied limit.
+		//   - 4096 matches ClaudeBackend's default, keeping all backends consistent.
+		maxTokens = 4096
+		log.Printf("[llm_004][security-control] openai: max_tokens enforced as default=%d for model=%s; caller supplied MaxTokens=0 (no explicit limit). PHI callers must set an explicit lower limit per their data access policy.", maxTokens, model)
 	}
 
-	if req.MaxTokens > 0 {
-		params.MaxCompletionTokens = param.NewOpt(int64(req.MaxTokens))
+	params := openai.ChatCompletionNewParams{
+		Model:               model,
+		Messages:            msgs,
+		MaxCompletionTokens: param.NewOpt(maxTokens),
 	}
 
 	if req.Temperature > 0 {
