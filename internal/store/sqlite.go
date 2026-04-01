@@ -205,6 +205,33 @@ func (s *SQLiteStore) ListPendingJobs(ctx context.Context, limit int) ([]Job, er
 	return jobs, rows.Err()
 }
 
+func (s *SQLiteStore) ClaimPendingJobs(ctx context.Context, limit int) ([]Job, error) {
+	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
+	defer cancel()
+	rows, err := s.db.QueryContext(ctx,
+		`UPDATE jobs SET status = ?, updated_at = ?
+		 WHERE id IN (
+		     SELECT id FROM jobs WHERE status = ? ORDER BY created_at ASC LIMIT ?
+		 )
+		 RETURNING id, repo_full_name, issue_number, issue_title, status, current_stage,
+		           pipeline_state, error, cost_usd, created_at, updated_at, completed_at`,
+		JobRunning, time.Now().UTC(), JobQueued, limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("claim pending jobs: %w", err)
+	}
+	defer rows.Close()
+	var jobs []Job
+	for rows.Next() {
+		j, err := s.scanJob(rows)
+		if err != nil {
+			return nil, fmt.Errorf("scan claimed job: %w", err)
+		}
+		jobs = append(jobs, *j)
+	}
+	return jobs, rows.Err()
+}
+
 func (s *SQLiteStore) UpsertRepoContext(ctx context.Context, rc RepoContextRecord) error {
 	ctx, cancel := context.WithTimeout(ctx, DefaultDBTimeout)
 	defer cancel()

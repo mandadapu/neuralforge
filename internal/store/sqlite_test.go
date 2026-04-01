@@ -72,6 +72,21 @@ func TestCompleteJob(t *testing.T) {
 	assert.NotNil(t, got.CompletedAt)
 }
 
+func TestClaimPendingJobs(t *testing.T) {
+	s := newTestStore(t)
+	require.NoError(t, s.CreateJob(context.Background(), Job{ID: "j1", RepoFullName: "o/r", IssueNumber: 1, Status: JobQueued}))
+
+	claimed, err := s.ClaimPendingJobs(context.Background(), 5)
+	require.NoError(t, err)
+	assert.Len(t, claimed, 1)
+	assert.Equal(t, JobRunning, claimed[0].Status)
+
+	// Second call should find nothing queued
+	claimed2, err := s.ClaimPendingJobs(context.Background(), 5)
+	require.NoError(t, err)
+	assert.Len(t, claimed2, 0)
+}
+
 func TestContextCancellation(t *testing.T) {
 	s := newTestStore(t)
 	ctx, cancel := context.WithCancel(context.Background())
