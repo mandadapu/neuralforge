@@ -13,22 +13,16 @@ import (
 
 type mockStore struct {
 	store.Store
-	jobs    []store.Job
-	updated int32
+	jobs []store.Job
 }
 
-func (m *mockStore) ListPendingJobs(ctx context.Context, limit int) ([]store.Job, error) {
+func (m *mockStore) ClaimPendingJobs(ctx context.Context, limit int) ([]store.Job, error) {
 	if len(m.jobs) == 0 {
 		return nil, nil
 	}
 	j := m.jobs[0]
 	m.jobs = m.jobs[1:]
 	return []store.Job{j}, nil
-}
-
-func (m *mockStore) UpdateJobStatus(ctx context.Context, id string, status store.JobStatus, stage string) error {
-	atomic.AddInt32(&m.updated, 1)
-	return nil
 }
 
 func (m *mockStore) CompleteJob(ctx context.Context, id string, status store.JobStatus) error {
