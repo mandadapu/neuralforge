@@ -14,19 +14,21 @@ type Event interface {
 
 // IssueLabeledEvent is emitted when a label is added to an issue.
 type IssueLabeledEvent struct {
-	Label string
-	Issue pipeline.GitHubIssue
-	Repo  pipeline.RepoContext
+	Label          string
+	Issue          pipeline.GitHubIssue
+	Repo           pipeline.RepoContext
+	InstallationID int64
 }
 
 func (e *IssueLabeledEvent) EventType() string { return "issue_labeled" }
 
 // IssueCommentEvent is emitted when a slash-command comment is created on an issue.
 type IssueCommentEvent struct {
-	Command string
-	User    string
-	Issue   pipeline.GitHubIssue
-	Repo    pipeline.RepoContext
+	Command        string
+	User           string
+	Issue          pipeline.GitHubIssue
+	Repo           pipeline.RepoContext
+	InstallationID int64
 }
 
 func (e *IssueCommentEvent) EventType() string { return "issue_comment" }
@@ -73,18 +75,24 @@ type rawComment struct {
 	User rawUser `json:"user"`
 }
 
+type rawInstallation struct {
+	ID int64 `json:"id"`
+}
+
 type rawIssuePayload struct {
-	Action string   `json:"action"`
-	Label  rawLabel `json:"label"`
-	Issue  rawIssue `json:"issue"`
-	Repo   rawRepo  `json:"repository"`
+	Action       string          `json:"action"`
+	Label        rawLabel        `json:"label"`
+	Issue        rawIssue        `json:"issue"`
+	Repo         rawRepo         `json:"repository"`
+	Installation rawInstallation `json:"installation"`
 }
 
 type rawCommentPayload struct {
-	Action  string     `json:"action"`
-	Comment rawComment `json:"comment"`
-	Issue   rawIssue   `json:"issue"`
-	Repo    rawRepo    `json:"repository"`
+	Action       string          `json:"action"`
+	Comment      rawComment      `json:"comment"`
+	Issue        rawIssue        `json:"issue"`
+	Repo         rawRepo         `json:"repository"`
+	Installation rawInstallation `json:"installation"`
 }
 
 func parseIssueEvent(payload []byte) (Event, error) {
@@ -115,6 +123,7 @@ func parseIssueEvent(payload []byte) (Event, error) {
 			DefaultBranch: raw.Repo.DefaultBranch,
 			CloneURL:      raw.Repo.CloneURL,
 		},
+		InstallationID: raw.Installation.ID,
 	}, nil
 }
 
@@ -152,5 +161,6 @@ func parseIssueCommentEvent(payload []byte) (Event, error) {
 			DefaultBranch: raw.Repo.DefaultBranch,
 			CloneURL:      raw.Repo.CloneURL,
 		},
+		InstallationID: raw.Installation.ID,
 	}, nil
 }
