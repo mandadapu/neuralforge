@@ -66,15 +66,7 @@ func New(cfg config.Config) (*App, error) {
 
 	mux := http.NewServeMux()
 	if a.ghApp != nil {
-		mux.Handle("/webhooks/github", a.ghApp.WebhookMiddleware(
-			http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				body, _ := io.ReadAll(r.Body)
-				eventType := r.Header.Get("X-GitHub-Event")
-				go a.handleEvent(eventType, body)
-				w.WriteHeader(http.StatusOK)
-				w.Write([]byte(`{"ok":true}`))
-			}),
-		))
+		mux.Handle("/webhooks/github", a.ghApp.WebhookMiddleware(a.ghAppWebhookHandlerFunc()))
 	} else {
 		mux.Handle("/webhooks/github", NewWebhookHandler(cfg.GitHub.WebhookSecret, a.handleEvent))
 	}
@@ -132,6 +124,24 @@ func (a *App) Shutdown(ctx context.Context) error {
 	return nil
 }
 
+// ghAppWebhookHandlerFunc returns the inner HTTP handler used inside the ghApp WebhookMiddleware.
+// It is extracted as a method so it can be tested independently of the middleware.
+func (a *App) ghAppWebhookHandlerFunc() http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "failed to read request body", http.StatusBadRequest)
+			return
+		}
+		eventType := r.Header.Get("X-GitHub-Event")
+		go a.handleEvent(eventType, body)
+		w.WriteHeader(http.StatusOK)
+		if _, err := w.Write([]byte(`{"ok":true}`)); err != nil {
+			slog.Error("failed to write webhook response", "error", err)
+		}
+	}
+}
+
 // handleEvent parses a webhook event and creates a job for issue labeled events.
 func (a *App) handleEvent(eventType string, payload []byte) {
 	event, err := github.ParseWebhookEvent(eventType, payload)
@@ -150,11 +160,12 @@ func (a *App) handleEvent(eventType string, payload []byte) {
 		}
 		jobID := fmt.Sprintf("%s#%d", e.Repo.FullName, e.Issue.Number)
 		job := store.Job{
-			ID:           jobID,
-			RepoFullName: e.Repo.FullName,
-			IssueNumber:  e.Issue.Number,
-			IssueTitle:   e.Issue.Title,
-			Status:       store.JobQueued,
+			ID:             jobID,
+			RepoFullName:   e.Repo.FullName,
+			IssueNumber:    e.Issue.Number,
+			IssueTitle:     e.Issue.Title,
+			Status:         store.JobQueued,
+			InstallationID: e.InstallationID,
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -223,27 +234,19 @@ func (a *App) buildJobHandler() worker.JobHandler {
 		cloneURL := fmt.Sprintf("https://github.com/%s.git", job.RepoFullName)
 
 		// Obtain an installation token for authenticated git clone if GitHub App is configured.
-		// TODO: resolve installationID from webhook event payload.
-		// For now, the pipeline runs without GitHub API access unless GITHUB_INSTALLATION_ID is set.
 		var cloneToken string
 		var ghClient *github.Client
-		if a.ghApp != nil {
-			installIDStr := os.Getenv("GITHUB_INSTALLATION_ID")
-			if installIDStr != "" {
-				var installID int64
-				if _, err := fmt.Sscanf(installIDStr, "%d", &installID); err == nil {
-					token, _, tokenErr := a.ghApp.InstallationToken(ctx, installID)
-					if tokenErr != nil {
-						slog.Warn("failed to get installation token, cloning without auth", "error", tokenErr)
-					} else {
-						cloneToken = token
-						httpClient, clientErr := a.ghApp.InstallationClient(ctx, installID)
-						if clientErr != nil {
-							slog.Warn("failed to create installation client", "error", clientErr)
-						} else {
-							ghClient = github.NewClient(httpClient)
-						}
-					}
+		if a.ghApp != nil && job.InstallationID > 0 {
+			token, _, tokenErr := a.ghApp.InstallationToken(ctx, job.InstallationID)
+			if tokenErr != nil {
+				slog.Warn("failed to get installation token, cloning without auth", "error", tokenErr)
+			} else {
+				cloneToken = token
+				httpClient, clientErr := a.ghApp.InstallationClient(ctx, job.InstallationID)
+				if clientErr != nil {
+					slog.Warn("failed to create installation client", "error", clientErr)
+				} else {
+					ghClient = github.NewClient(httpClient)
 				}
 			}
 		}
