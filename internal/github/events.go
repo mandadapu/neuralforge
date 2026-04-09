@@ -14,19 +14,21 @@ type Event interface {
 
 // IssueLabeledEvent is emitted when a label is added to an issue.
 type IssueLabeledEvent struct {
-	Label string
-	Issue pipeline.GitHubIssue
-	Repo  pipeline.RepoContext
+	Label          string
+	InstallationID int64
+	Issue          pipeline.GitHubIssue
+	Repo           pipeline.RepoContext
 }
 
 func (e *IssueLabeledEvent) EventType() string { return "issue_labeled" }
 
 // IssueCommentEvent is emitted when a slash-command comment is created on an issue.
 type IssueCommentEvent struct {
-	Command string
-	User    string
-	Issue   pipeline.GitHubIssue
-	Repo    pipeline.RepoContext
+	Command        string
+	User           string
+	InstallationID int64
+	Issue          pipeline.GitHubIssue
+	Repo           pipeline.RepoContext
 }
 
 func (e *IssueCommentEvent) EventType() string { return "issue_comment" }
@@ -73,18 +75,24 @@ type rawComment struct {
 	User rawUser `json:"user"`
 }
 
+type rawInstallation struct {
+	ID int64 `json:"id"`
+}
+
 type rawIssuePayload struct {
-	Action string   `json:"action"`
-	Label  rawLabel `json:"label"`
-	Issue  rawIssue `json:"issue"`
-	Repo   rawRepo  `json:"repository"`
+	Action       string          `json:"action"`
+	Label        rawLabel        `json:"label"`
+	Issue        rawIssue        `json:"issue"`
+	Repo         rawRepo         `json:"repository"`
+	Installation rawInstallation `json:"installation"`
 }
 
 type rawCommentPayload struct {
-	Action  string     `json:"action"`
-	Comment rawComment `json:"comment"`
-	Issue   rawIssue   `json:"issue"`
-	Repo    rawRepo    `json:"repository"`
+	Action       string          `json:"action"`
+	Comment      rawComment      `json:"comment"`
+	Issue        rawIssue        `json:"issue"`
+	Repo         rawRepo         `json:"repository"`
+	Installation rawInstallation `json:"installation"`
 }
 
 func parseIssueEvent(payload []byte) (Event, error) {
@@ -102,7 +110,8 @@ func parseIssueEvent(payload []byte) (Event, error) {
 	}
 
 	return &IssueLabeledEvent{
-		Label: raw.Label.Name,
+		Label:          raw.Label.Name,
+		InstallationID: raw.Installation.ID,
 		Issue: pipeline.GitHubIssue{
 			Number: raw.Issue.Number,
 			Title:  raw.Issue.Title,
@@ -138,8 +147,9 @@ func parseIssueCommentEvent(payload []byte) (Event, error) {
 	}
 
 	return &IssueCommentEvent{
-		Command: body,
-		User:    raw.Comment.User.Login,
+		Command:        body,
+		User:           raw.Comment.User.Login,
+		InstallationID: raw.Installation.ID,
 		Issue: pipeline.GitHubIssue{
 			Number: raw.Issue.Number,
 			Title:  raw.Issue.Title,
