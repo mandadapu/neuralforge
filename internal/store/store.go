@@ -15,11 +15,12 @@ const (
 )
 
 type Job struct {
-	ID            string     `json:"id"`
-	RepoFullName  string     `json:"repo_full_name"`
-	IssueNumber   int        `json:"issue_number"`
-	IssueTitle    string     `json:"issue_title"`
-	Status        JobStatus  `json:"status"`
+	ID             string     `json:"id"`
+	RepoFullName   string     `json:"repo_full_name"`
+	IssueNumber    int        `json:"issue_number"`
+	IssueTitle     string     `json:"issue_title"`
+	InstallationID int64      `json:"installation_id"`
+	Status         JobStatus  `json:"status"`
 	CurrentStage  string     `json:"current_stage"`
 	PipelineState string     `json:"pipeline_state"`
 	Error         string     `json:"error"`

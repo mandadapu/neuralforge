@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -60,4 +61,37 @@ func TestWebhookRejectsInvalidSignature(t *testing.T) {
 	handler.ServeHTTP(rr, req)
 
 	assert.Equal(t, http.StatusUnauthorized, rr.Code)
+}
+
+// failingResponseWriter simulates a ResponseWriter whose Write() always fails.
+type failingResponseWriter struct {
+	header http.Header
+	code   int
+}
+
+func (f *failingResponseWriter) Header() http.Header {
+	if f.header == nil {
+		f.header = make(http.Header)
+	}
+	return f.header
+}
+
+func (f *failingResponseWriter) Write([]byte) (int, error) {
+	return 0, errors.New("simulated write failure")
+}
+
+func (f *failingResponseWriter) WriteHeader(code int) {
+	f.code = code
+}
+
+func TestGhAppWebhookHandlerWriteError(t *testing.T) {
+	a := &App{}
+	req := httptest.NewRequest("POST", "/webhooks/github", strings.NewReader("{}"))
+	req.Header.Set("X-GitHub-Event", "push")
+
+	rw := &failingResponseWriter{}
+	assert.NotPanics(t, func() {
+		a.ghAppWebhookHandler(rw, req)
+	})
+	assert.Equal(t, http.StatusOK, rw.code)
 }
